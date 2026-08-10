@@ -879,6 +879,8 @@ function MealPlanning({
   const state = session.player_state[playerId];
   const [filter, setFilter] = useState<"favourites" | "asian" | "vego">("favourites");
   const [pickedMealId, setPickedMealId] = useState("");
+  const [pickedFromDay, setPickedFromDay] = useState<string | null>(null);
+  const [canDrag] = useState(() => window.matchMedia("(pointer: fine)").matches);
   const [assigned, setAssigned] = useState<Record<string, string | null>>(() => {
     const initial = Object.fromEntries(session.days.map((day, index) => [day, state.selected_meals[index] ?? null]));
     return initial as Record<string, string | null>;
@@ -915,6 +917,7 @@ function MealPlanning({
       return next;
     });
     setPickedMealId("");
+    setPickedFromDay(null);
   }
 
   function moveMeal(fromDay: string, toDay: string) {
@@ -923,6 +926,32 @@ function MealPlanning({
       const replacedMealId = current[toDay];
       return { ...current, [fromDay]: replacedMealId, [toDay]: movingMealId };
     });
+  }
+
+  function pickFromRail(mealId: string) {
+    setPickedMealId((current) => (current === mealId ? "" : mealId));
+    setPickedFromDay(null);
+  }
+
+  function pickAssigned(day: string, mealId: string) {
+    if (pickedMealId === mealId && pickedFromDay === day) {
+      setPickedMealId("");
+      setPickedFromDay(null);
+      return;
+    }
+    setPickedMealId(mealId);
+    setPickedFromDay(day);
+  }
+
+  function placeOnDay(day: string) {
+    if (!pickedMealId) return;
+    if (pickedFromDay) {
+      if (pickedFromDay !== day) moveMeal(pickedFromDay, day);
+      setPickedMealId("");
+      setPickedFromDay(null);
+      return;
+    }
+    assignMeal(day, pickedMealId);
   }
 
   function submit() {
@@ -956,8 +985,8 @@ function MealPlanning({
               <button
                 key={meal.id}
                 className={pickedMealId === meal.id ? "rail-meal picked" : isAssigned ? "rail-meal assigned" : "rail-meal"}
-                draggable
-                onClick={() => setPickedMealId((current) => current === meal.id ? "" : meal.id)}
+                draggable={canDrag}
+                onClick={() => pickFromRail(meal.id)}
                 onDragStart={(event) => event.dataTransfer.setData("text/plain", `meal:${meal.id}`)}
               >
                 <span>{meal.emoji}</span>
@@ -975,7 +1004,7 @@ function MealPlanning({
               <div
                 key={day}
                 className={pickedMealId && (meal || plannedCount < session.max_selected_meals) ? "weekday-slot ready" : "weekday-slot"}
-                onClick={() => pickedMealId && assignMeal(day, pickedMealId)}
+                onClick={() => placeOnDay(day)}
                 onDragOver={(event) => event.preventDefault()}
                 onDrop={(event) => {
                   event.preventDefault();
@@ -996,7 +1025,15 @@ function MealPlanning({
                   )}
                 </div>
                 {meal ? (
-                  <div className="slot-meal" draggable onDragStart={(event) => event.dataTransfer.setData("text/plain", `day:${day}`)}>
+                  <div
+                    className={pickedMealId === mealId && pickedFromDay === day ? "slot-meal picked" : "slot-meal"}
+                    draggable={canDrag}
+                    onDragStart={(event) => event.dataTransfer.setData("text/plain", `day:${day}`)}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      pickAssigned(day, mealId!);
+                    }}
+                  >
                     <span>{meal.emoji}</span>
                     <div>
                       <strong>{meal.name}</strong>

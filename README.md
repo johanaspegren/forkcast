@@ -93,35 +93,45 @@ npm run build
 npm run serve
 ```
 
+If port 8000 is already in use on the Pi, run uvicorn directly on any free port instead, for example 8010:
+
+```bash
+.venv/bin/python -m uvicorn backend.forkcast.main:app --host 0.0.0.0 --port 8010
+```
+
 Open from phones on the same Wi-Fi:
 
 ```text
-http://<raspberry-pi-ip>:8000
+http://<raspberry-pi-ip>:8010
 ```
 
 Optional systemd service:
 
-```ini
+Replace `/home/pi/dev/forkcast` with the path where you cloned the repo on the Pi, and replace `8010` with any free port you want to use:
+
+```bash
+sudo tee /etc/systemd/system/forkcast.service >/dev/null <<'EOF'
 [Unit]
 Description=Forkcast
 After=network-online.target
 
 [Service]
-WorkingDirectory=/home/pi/forkcast-2
-ExecStart=/home/pi/forkcast-2/.venv/bin/python -m uvicorn backend.forkcast.main:app --host 0.0.0.0 --port 8000
-Restart=always
 User=pi
+WorkingDirectory=/home/pi/dev/forkcast
+ExecStart=/home/pi/dev/forkcast/.venv/bin/python -m uvicorn backend.forkcast.main:app --host 0.0.0.0 --port 8010
+Restart=always
 
 [Install]
 WantedBy=multi-user.target
+EOF
 ```
 
-Save that as `/etc/systemd/system/forkcast.service`, then run:
+Then run:
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable --now forkcast
-sudo systemctl status forkcast
+sudo systemctl enable --now forkcast.service
+sudo systemctl status forkcast.service
 ```
 
 ## Simulation Mode

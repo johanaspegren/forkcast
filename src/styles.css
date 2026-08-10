@@ -408,6 +408,9 @@ h3 {
   background: #fffdf7;
   border: 1px solid rgba(228, 192, 124, 0.52);
   outline: 2px solid transparent;
+  touch-action: manipulation;
+  -webkit-touch-callout: none;
+  user-select: none;
 }
 
 .rail-meal span {
@@ -482,6 +485,18 @@ h3 {
   align-items: center;
   gap: 8px;
   min-width: 0;
+  padding: 4px;
+  border-radius: 8px;
+  outline: 2px solid transparent;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-touch-callout: none;
+  user-select: none;
+}
+
+.slot-meal.picked {
+  outline-color: #ff9f45;
+  background: #fff0c8;
 }
 
 .slot-meal span {
