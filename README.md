@@ -12,6 +12,7 @@ This first prototype includes:
 - Prototype house-rule status for fish and minced-meat dinners
 - Development simulation mode with three random extra players
 - Turn-based negotiation with direct cook/clean commitments
+- Live hallway menu display with rotating restaurant-inspired styles
 
 ## Run Locally
 
@@ -42,6 +43,28 @@ http://localhost:5173
 ```
 
 Phones on the same LAN can use the Vite network URL printed by `npm run dev`.
+
+## Hallway Menu Display
+
+Open a read-only live menu view on a tablet:
+
+```text
+http://localhost:5173/display?session=<session-id>
+```
+
+To check the hallway tablet without creating a real session, open the built-in mock week:
+
+```text
+http://localhost:5173/display?mock=1
+```
+
+On a Raspberry Pi server, use:
+
+```text
+http://<raspberry-pi-ip>:8000/display?session=<session-id>
+```
+
+The display updates through the session WebSocket and rotates between Classic Dining, Art Deco, and Burger Shack menu styles.
 
 ## Raspberry Pi Home Server
 

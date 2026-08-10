@@ -1,4 +1,4 @@
-import { Bot, Check, ChevronRight, CookingPot, FastForward, Minus, Plus, Sparkles, Users } from "lucide-react";
+import { Bot, Check, ChevronRight, CookingPot, FastForward, Info, Minus, Plus, Sparkles, Users } from "lucide-react";
 import QRCode from "qrcode";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -10,11 +10,123 @@ import type { Meal, Proposal, SchoolMenu, Session } from "./game/gameTypes";
 
 const titleCase = (value: string) => value.slice(0, 1).toUpperCase() + value.slice(1);
 const SCHOOL_MENU_URL = "https://menu.matildaplatform.com/meals/week/6752f62a2554115c468f8cb8_forskola-skola";
+const menuThemes = [
+  { className: "display-fine", label: "Freestanding Blackboard", venue: "Tonight's Board", layout: "chalk-stand" },
+  { className: "display-deco", label: "Printed Restaurant Sheet", venue: "Forkcast Menu", layout: "broadsheet" },
+  { className: "display-burger", label: "Sparse Tasting Menu", venue: "Summer Menu", layout: "tasting" },
+  { className: "display-comic", label: "Retro Breakfast Placemat", venue: "Good Evening Dinner", layout: "placemat" },
+  { className: "display-canteen", label: "Cafe Chalk Lettering", venue: "Kitchen List", layout: "chalk-list" }
+];
+const mealDisplayDetails: Record<string, { ingredients: string[]; calories: number; protein: number; bit: string }> = {
+  salmon: {
+    ingredients: ["salmon", "lemon", "potatoes", "dill", "peas"],
+    calories: 620,
+    protein: 39,
+    bit: "Arrives wearing a tiny lemon cape."
+  },
+  tacos: {
+    ingredients: ["beef mince", "tortillas", "tomato", "corn", "cheese"],
+    calories: 710,
+    protein: 34,
+    bit: "Crunch level: family meeting loud."
+  },
+  pasta: {
+    ingredients: ["pasta", "basil pesto", "parmesan", "tomatoes", "spinach"],
+    calories: 640,
+    protein: 23,
+    bit: "Green, twirly, and suspiciously persuasive."
+  },
+  chicken_curry: {
+    ingredients: ["chicken", "rice", "coconut milk", "curry spices", "carrot"],
+    calories: 690,
+    protein: 41,
+    bit: "Mildly spicy. Dramatically fragrant."
+  },
+  pizza: {
+    ingredients: ["pizza dough", "tomato sauce", "mozzarella", "ham", "olives"],
+    calories: 780,
+    protein: 31,
+    bit: "Technically round. Emotionally Friday."
+  },
+  yakiniku: {
+    ingredients: ["beef", "rice", "soy", "ginger", "sesame"],
+    calories: 730,
+    protein: 42,
+    bit: "Tiny steak vacation, bowl edition."
+  },
+  tomato_soup: {
+    ingredients: ["tomatoes", "onion", "cream", "basil", "bread"],
+    calories: 480,
+    protein: 16,
+    bit: "Soup with main-character confidence."
+  },
+  burgers: {
+    ingredients: ["beef patty", "bun", "lettuce", "cheddar", "pickle"],
+    calories: 820,
+    protein: 38,
+    bit: "Stacked taller than the chore excuses."
+  },
+  teriyaki_bowl: {
+    ingredients: ["chicken", "rice", "teriyaki sauce", "broccoli", "sesame"],
+    calories: 660,
+    protein: 40,
+    bit: "Sticky, shiny, and very pleased with itself."
+  },
+  veggie_chili: {
+    ingredients: ["beans", "tomato", "pepper", "corn", "rice"],
+    calories: 560,
+    protein: 24,
+    bit: "Bean diplomacy in a warm bowl."
+  }
+};
+const MOCK_DISPLAY_MEALS: Meal[] = [
+  { id: "salmon", name: "Lemon Salmon", emoji: "🐟", tags: ["fish", "quick"], protein_type: "fish", minced_meat: false, fish: true },
+  { id: "tacos", name: "Taco Night", emoji: "🌮", tags: ["minced", "family"], protein_type: "beef", minced_meat: true, fish: false },
+  { id: "pasta", name: "Pesto Pasta", emoji: "🍝", tags: ["quick", "vegetarian"], protein_type: "vegetarian", minced_meat: false, fish: false },
+  { id: "chicken_curry", name: "Chicken Curry", emoji: "🍛", tags: ["chicken", "spiced"], protein_type: "chicken", minced_meat: false, fish: false },
+  { id: "pizza", name: "Friday Pizza", emoji: "🍕", tags: ["weekend", "family"], protein_type: "mixed", minced_meat: false, fish: false }
+];
+const MOCK_WEEKLY_SESSION: Session = {
+  id: "mock-week",
+  join_code: "DEMO-WEEK",
+  phase: "COMPLETE",
+  days: ["monday", "tuesday", "wednesday", "thursday", "friday"],
+  players: {
+    johan: { id: "johan", name: "Johan", avatar: "🥘", favourite_meals: ["salmon", "tacos", "pasta"], simulated: false },
+    anna: { id: "anna", name: "Anna", avatar: "🍕", favourite_meals: ["pizza", "pasta", "chicken_curry"], simulated: false },
+    elsa: { id: "elsa", name: "Elsa", avatar: "🌮", favourite_meals: ["tacos", "salmon", "pizza"], simulated: false },
+    oscar: { id: "oscar", name: "Oscar", avatar: "🍜", favourite_meals: ["chicken_curry", "pasta", "salmon"], simulated: false }
+  },
+  player_state: {},
+  proposals: {},
+  week: {
+    monday: { meal_id: "salmon", chef: ["johan"], cleanup: ["anna"], rule_exceptions: [] },
+    tuesday: { meal_id: "tacos", chef: ["elsa"], cleanup: ["oscar"], rule_exceptions: [] },
+    wednesday: { meal_id: "pasta", chef: ["anna"], cleanup: ["johan"], rule_exceptions: [] },
+    thursday: { meal_id: "chicken_curry", chef: ["oscar"], cleanup: ["elsa"], rule_exceptions: [] },
+    friday: { meal_id: "pizza", chef: ["johan", "anna"], cleanup: ["elsa", "oscar"], rule_exceptions: [] }
+  },
+  rules: [
+    { id: "fish", label: "One fish dinner", level: "house", satisfied: true, detail: "Lemon Salmon covers fish this week." },
+    { id: "minced", label: "Only one minced-meat dinner", level: "house", satisfied: true, detail: "Taco Night is the only minced-meat dinner." }
+  ],
+  turn_order: ["johan", "anna", "elsa", "oscar"],
+  current_turn_index: 0,
+  turn_log: ["Mock week loaded for hallway display testing."],
+  max_players: 4,
+  starting_voting_points: 10,
+  max_selected_meals: 3,
+  max_action_cards_played: 2
+};
 
 export default function App() {
-  const [meals, setMeals] = useState<Meal[]>([]);
+  const searchParams = new URLSearchParams(window.location.search);
+  const isDisplayMode = window.location.pathname.startsWith("/display");
+  const isMockDisplay = isDisplayMode && (searchParams.get("mock") === "1" || searchParams.get("session") === "mock");
+  const sessionId = searchParams.get("session");
+  const [meals, setMeals] = useState<Meal[]>(MOCK_DISPLAY_MEALS);
   const [schoolMenu, setSchoolMenu] = useState<SchoolMenu | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
+  const [session, setSession] = useState<Session | null>(() => isMockDisplay ? MOCK_WEEKLY_SESSION : null);
   const [playerId, setPlayerId] = useState(localStorage.getItem("forkcast.playerId") ?? "");
   const [name, setName] = useState("");
   const [joinCode, setJoinCode] = useState("");
@@ -22,16 +134,19 @@ export default function App() {
   const [error, setError] = useState("");
 
   useEffect(() => {
+    if (isMockDisplay) return;
     api.meals().then((value) => setMeals(value as Meal[])).catch((err) => setError(err.message));
     api.schoolMenu(SCHOOL_MENU_URL).then(setSchoolMenu).catch(() => undefined);
-    const sessionId = new URLSearchParams(window.location.search).get("session");
-    if (sessionId) {
+    if (sessionId && !isMockDisplay) {
       setJoinCode(sessionId);
+      if (isDisplayMode) {
+        api.getSession(sessionId).then(setSession).catch((err) => setError(err.message));
+      }
     }
-  }, []);
+  }, [isDisplayMode, isMockDisplay, sessionId]);
 
   useEffect(() => {
-    if (!session?.id) return;
+    if (!session?.id || session.id === MOCK_WEEKLY_SESSION.id) return;
     const socket = connectSessionSocket(session.id, setSession);
     return () => socket.close();
   }, [session?.id]);
@@ -44,6 +159,20 @@ export default function App() {
     : "";
   const currentTurnPlayer = currentTurnId && session ? session.players[currentTurnId] : undefined;
   const canSimulateCurrentTurn = session?.phase !== "NEGOTIATION" || Boolean(currentTurnPlayer?.simulated);
+
+  if (isDisplayMode) {
+    return (
+      <DisplayScreen
+        session={session}
+        meals={mealById}
+        joinCode={joinCode}
+        error={error}
+        onJoinCodeChange={setJoinCode}
+        onLoad={() => run(() => api.getSession(joinCode))}
+        onLoadMock={() => setSession(MOCK_WEEKLY_SESSION)}
+      />
+    );
+  }
 
   async function run(action: () => Promise<Session>) {
     setError("");
@@ -283,7 +412,7 @@ function QrShare({ value }: { value: string }) {
       width: 176,
       margin: 1,
       color: {
-        dark: "#111617",
+        dark: "#24302f",
         light: "#fff9ed"
       }
     }).catch(() => undefined);
@@ -294,6 +423,288 @@ function QrShare({ value }: { value: string }) {
       <canvas ref={canvasRef} aria-label="Session QR code" />
       <p>{value}</p>
     </div>
+  );
+}
+
+function DisplayScreen({
+  session,
+  meals,
+  joinCode,
+  error,
+  onJoinCodeChange,
+  onLoad,
+  onLoadMock
+}: {
+  session: Session | null;
+  meals: Record<string, Meal>;
+  joinCode: string;
+  error: string;
+  onJoinCodeChange: (value: string) => void;
+  onLoad: () => void;
+  onLoadMock: () => void;
+}) {
+  const requestedTheme = new URLSearchParams(window.location.search).get("theme");
+  const requestedThemeIndex = menuThemes.findIndex(
+    (menuTheme) => menuTheme.layout === requestedTheme || menuTheme.className === requestedTheme
+  );
+  const forcedThemeIndex = requestedThemeIndex >= 0 ? requestedThemeIndex : null;
+  const [themeIndex, setThemeIndex] = useState(forcedThemeIndex ?? 0);
+  const [selectedDay, setSelectedDay] = useState("");
+
+  useEffect(() => {
+    if (forcedThemeIndex !== null) {
+      setThemeIndex(forcedThemeIndex);
+      return undefined;
+    }
+    const timer = window.setInterval(() => {
+      setThemeIndex((current) => (current + 1) % menuThemes.length);
+    }, 22000);
+    return () => window.clearInterval(timer);
+  }, [forcedThemeIndex]);
+
+  useEffect(() => {
+    if (!session) return;
+    setSelectedDay((current) => current && session.days.includes(current) ? current : session.days[0] ?? "");
+  }, [session]);
+
+  const theme = menuThemes[themeIndex];
+  const today = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+
+  if (!session) {
+    return (
+      <main className="display-shell display-setup display-fine">
+        <section className="display-menu">
+          <p className="display-kicker">Hallway menu</p>
+          <h1>Forkcast</h1>
+          <p className="display-note">Load a session and leave this screen open on the tablet.</p>
+          <div className="display-load">
+            <input value={joinCode} onChange={(event) => onJoinCodeChange(event.target.value)} placeholder="Session ID" />
+            <button className="primary" onClick={onLoad}>Load Menu</button>
+          </div>
+          <button className="display-mock-button" onClick={onLoadMock}>Try mock week</button>
+          {error && <p className="error">{error}</p>}
+        </section>
+      </main>
+    );
+  }
+
+  const menuEntries = session.days.map((day) => {
+    const locked = session.week[day];
+    const leadingProposal = Object.values(session.proposals)
+      .filter((proposal) => proposal.day === day)
+      .sort((a, b) => b.voting_points - a.voting_points)[0];
+    const mealId = locked?.meal_id ?? leadingProposal?.meal_id ?? "";
+    return {
+      day,
+      locked,
+      proposal: leadingProposal,
+      meal: meals[mealId]
+    };
+  });
+  const todayDayKey = new Date().toLocaleDateString("en-US", { weekday: "long" }).toLowerCase();
+  const selectedEntry = menuEntries.find((entry) => entry.day === selectedDay) ?? menuEntries[0];
+  const todayEntry = menuEntries.find((entry) => entry.day === todayDayKey) ?? selectedEntry;
+  const selectedMealDetails = selectedEntry?.meal
+    ? mealDisplayDetails[selectedEntry.meal.id] ?? {
+        ingredients: selectedEntry.meal.tags,
+        calories: 600,
+        protein: selectedEntry.meal.protein_type === "vegetarian" ? 22 : 34,
+        bit: "Chef notes currently written in gravy."
+      }
+    : {
+        ingredients: ["mystery", "hope", "timer confidence"],
+        calories: 0,
+        protein: 0,
+        bit: "The kitchen is still negotiating with the calendar."
+      };
+  const todayMealDetails = todayEntry?.meal
+    ? mealDisplayDetails[todayEntry.meal.id] ?? {
+        ingredients: todayEntry.meal.tags,
+        calories: 600,
+        protein: todayEntry.meal.protein_type === "vegetarian" ? 22 : 34,
+        bit: "Chef notes currently written in gravy."
+      }
+    : selectedMealDetails;
+  const selectedChefIds = selectedEntry?.locked?.chef ?? selectedEntry?.proposal?.chef_volunteers ?? [];
+  const selectedCleanerIds = selectedEntry?.locked?.cleanup ?? selectedEntry?.proposal?.cleanup_volunteers ?? [];
+  const todayChefIds = todayEntry?.locked?.chef ?? todayEntry?.proposal?.chef_volunteers ?? [];
+  const todayCleanerIds = todayEntry?.locked?.cleanup ?? todayEntry?.proposal?.cleanup_volunteers ?? [];
+
+  return (
+    <main className={`display-shell ${theme.className} display-layout-${theme.layout}`}>
+      <section className="display-menu">
+        <header className="display-menu-header">
+          <div>
+            <p className="display-kicker">{theme.label}</p>
+            <h1>{theme.venue}</h1>
+          </div>
+          <div className="display-meta">
+            <span>{today}</span>
+            <strong>{session.join_code}</strong>
+          </div>
+        </header>
+
+        <div className="display-subhead">
+          <span>Weekly dinner menu</span>
+          <span>{session.phase.replace("_", " ")}</span>
+        </div>
+
+        <div className="display-landscape-board">
+          {todayEntry && (
+            <section className="display-today-feature">
+              <p className="display-kicker">Today</p>
+              <div className="display-today-dish">
+                <span>{todayEntry.meal?.emoji ?? "?"}</span>
+                <div>
+                  <small>{titleCase(todayEntry.day)}</small>
+                  <h2>{todayEntry.meal?.name ?? "Chef's choice"}</h2>
+                  <p>{todayMealDetails.bit}</p>
+                </div>
+              </div>
+              <div className="display-today-crew">
+                <div>
+                  <small>Cook</small>
+                  <div className="display-avatar-row">
+                    {todayChefIds.length
+                      ? todayChefIds.map((id) => (
+                          <span className="display-person-chip" key={`today-chef-${id}`}>
+                            <b>{session.players[id]?.avatar ?? "?"}</b>
+                            {session.players[id]?.name ?? "Unassigned"}
+                          </span>
+                        ))
+                      : <span className="display-person-chip muted-chip"><b>?</b> Unassigned</span>}
+                  </div>
+                </div>
+                <div>
+                  <small>Cleaner</small>
+                  <div className="display-avatar-row">
+                    {todayCleanerIds.length
+                      ? todayCleanerIds.map((id) => (
+                          <span className="display-person-chip" key={`today-cleaner-${id}`}>
+                            <b>{session.players[id]?.avatar ?? "?"}</b>
+                            {session.players[id]?.name ?? "Unassigned"}
+                          </span>
+                        ))
+                      : <span className="display-person-chip muted-chip"><b>?</b> Unassigned</span>}
+                  </div>
+                </div>
+              </div>
+              <div className="display-nutrition">
+                <span>{todayMealDetails.calories} cals</span>
+                <span>{todayMealDetails.protein}g prots</span>
+              </div>
+              <div className="display-ingredients">
+                {todayMealDetails.ingredients.map((ingredient) => (
+                  <span key={`today-${ingredient}`}>{ingredient}</span>
+                ))}
+              </div>
+            </section>
+          )}
+
+          <section className="display-week-panel">
+            <div className="display-menu-grid">
+              {menuEntries.map(({ day, locked, proposal, meal }) => (
+                <button
+                  aria-expanded={selectedDay === day}
+                  className={[
+                    "display-menu-item",
+                    locked ? "locked" : "",
+                    day === todayEntry?.day ? "today" : "",
+                    selectedDay === day ? "selected" : ""
+                  ].filter(Boolean).join(" ")}
+                  key={day}
+                  onClick={() => setSelectedDay(day)}
+                  type="button"
+                >
+                  <div className="display-day">
+                    <span>{titleCase(day)}</span>
+                    <small>{day === todayEntry?.day ? "Today" : locked ? "Reserved" : proposal ? "Leading" : "Open"}</small>
+                  </div>
+                  <div className="display-dish">
+                    <span>{meal?.emoji ?? "?"}</span>
+                    <div>
+                      <strong>{meal?.name ?? "Chef's choice"}</strong>
+                      <p>
+                        {locked
+                          ? `${locked.chef.map((id) => session.players[id]?.name).join(", ") || "Unassigned"} cooks`
+                          : proposal
+                            ? `${proposal.voting_points} points on the board`
+                            : "Waiting for the family draft"}
+                      </p>
+                      <div className="display-mini-crew" aria-label={`${titleCase(day)} crew`}>
+                        {(locked?.chef ?? proposal?.chef_volunteers ?? []).slice(0, 2).map((id) => (
+                          <span title={`${session.players[id]?.name ?? "Someone"} cooks`} key={`chef-${day}-${id}`}>
+                            {session.players[id]?.avatar ?? "?"}
+                          </span>
+                        ))}
+                        {(locked?.cleanup ?? proposal?.cleanup_volunteers ?? []).slice(0, 2).map((id) => (
+                          <span title={`${session.players[id]?.name ?? "Someone"} cleans`} key={`clean-${day}-${id}`}>
+                            {session.players[id]?.avatar ?? "?"}
+                          </span>
+                        ))}
+                        <Info size={16} aria-hidden="true" />
+                      </div>
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            {selectedEntry && (
+              <aside className="display-detail-panel">
+                <div>
+                  <p className="display-kicker">{titleCase(selectedEntry.day)} details</p>
+                  <h2>{selectedEntry.meal?.emoji ?? "?"} {selectedEntry.meal?.name ?? "Chef's choice"}</h2>
+                  <p>{selectedMealDetails.bit}</p>
+                </div>
+                <div className="display-crew-grid">
+                  <div>
+                    <small>Cook</small>
+                    <div className="display-avatar-row">
+                      {selectedChefIds.length
+                        ? selectedChefIds.map((id) => (
+                            <span className="display-person-chip" key={`detail-chef-${id}`}>
+                              <b>{session.players[id]?.avatar ?? "?"}</b>
+                              {session.players[id]?.name ?? "Unassigned"}
+                            </span>
+                          ))
+                        : <span className="display-person-chip muted-chip"><b>?</b> Unassigned</span>}
+                    </div>
+                  </div>
+                  <div>
+                    <small>Cleaner</small>
+                    <div className="display-avatar-row">
+                      {selectedCleanerIds.length
+                        ? selectedCleanerIds.map((id) => (
+                            <span className="display-person-chip" key={`detail-cleaner-${id}`}>
+                              <b>{session.players[id]?.avatar ?? "?"}</b>
+                              {session.players[id]?.name ?? "Unassigned"}
+                            </span>
+                          ))
+                        : <span className="display-person-chip muted-chip"><b>?</b> Unassigned</span>}
+                    </div>
+                  </div>
+                </div>
+                <div className="display-nutrition">
+                  <span>{selectedMealDetails.calories} cals</span>
+                  <span>{selectedMealDetails.protein}g prots</span>
+                </div>
+                <div className="display-ingredients">
+                  {selectedMealDetails.ingredients.map((ingredient) => (
+                    <span key={ingredient}>{ingredient}</span>
+                  ))}
+                </div>
+              </aside>
+            )}
+          </section>
+        </div>
+
+        <footer className="display-footer">
+          <span>{session.id === "mock-week" ? "Mock demo" : "Updates live"}</span>
+          <span>Tap a dish for kitchen gossip</span>
+        </footer>
+      </section>
+    </main>
   );
 }
 
