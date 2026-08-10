@@ -85,3 +85,24 @@ export type Session = {
   max_selected_meals: number;
   max_action_cards_played: number;
 };
+
+export type SchoolMenuCourse = {
+  name: string;
+  option_name: string;
+  tags: string[];
+  image: string | null;
+};
+
+export type SchoolMenuDay = {
+  date: string;
+  name: string;
+  courses: SchoolMenuCourse[];
+};
+
+export type SchoolMenu = {
+  source_url: string;
+  start_date: string;
+  end_date: string;
+  distributor: string;
+  days: SchoolMenuDay[];
+};

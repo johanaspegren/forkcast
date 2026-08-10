@@ -6,12 +6,14 @@ import { api } from "./api/rest";
 import { connectSessionSocket } from "./api/websocket";
 import { PlayerAvatar } from "./components/PlayerAvatar";
 import { VotingPoints } from "./components/VotingPoints";
-import type { Meal, Proposal, Session } from "./game/gameTypes";
+import type { Meal, Proposal, SchoolMenu, Session } from "./game/gameTypes";
 
 const titleCase = (value: string) => value.slice(0, 1).toUpperCase() + value.slice(1);
+const SCHOOL_MENU_URL = "https://menu.matildaplatform.com/meals/week/6752f62a2554115c468f8cb8_forskola-skola";
 
 export default function App() {
   const [meals, setMeals] = useState<Meal[]>([]);
+  const [schoolMenu, setSchoolMenu] = useState<SchoolMenu | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [playerId, setPlayerId] = useState(localStorage.getItem("forkcast.playerId") ?? "");
   const [name, setName] = useState("");
@@ -21,6 +23,7 @@ export default function App() {
 
   useEffect(() => {
     api.meals().then((value) => setMeals(value as Meal[])).catch((err) => setError(err.message));
+    api.schoolMenu(SCHOOL_MENU_URL).then(setSchoolMenu).catch(() => undefined);
     const sessionId = new URLSearchParams(window.location.search).get("session");
     if (sessionId) {
       setJoinCode(sessionId);
@@ -186,6 +189,7 @@ export default function App() {
         <MealPlanning
           session={session}
           allMeals={meals}
+          schoolMenu={schoolMenu}
           meals={mealById}
           playerId={playerId}
           onSubmit={(placements) =>
@@ -293,15 +297,42 @@ function QrShare({ value }: { value: string }) {
   );
 }
 
+function SchoolLunchStrip({ menu }: { menu: SchoolMenu }) {
+  return (
+    <div className="school-menu-strip">
+      <div className="school-menu-title">
+        <strong>School lunch</strong>
+        <span>{menu.start_date} - {menu.end_date}</span>
+      </div>
+      <div className="school-menu-days">
+        {menu.days.slice(0, 5).map((day) => {
+          const date = new Date(day.date);
+          const mainCourse = day.courses.find((course) => course.option_name === "Dagens lunch") ?? day.courses[0];
+          const greenCourse = day.courses.find((course) => course.option_name === "Dagens gröna");
+          return (
+            <div className="school-menu-day" key={day.date}>
+              <strong>{date.toLocaleDateString("en-US", { weekday: "short" })}</strong>
+              <span>{mainCourse?.name ?? "No lunch listed"}</span>
+              {greenCourse && <small>{greenCourse.name}</small>}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function MealPlanning({
   session,
   allMeals,
+  schoolMenu,
   meals,
   playerId,
   onSubmit
 }: {
   session: Session;
   allMeals: Meal[];
+  schoolMenu: SchoolMenu | null;
   meals: Record<string, Meal>;
   playerId: string;
   onSubmit: (placements: Array<{ meal_id: string; day: string; points: number }>) => void;
@@ -371,6 +402,7 @@ function MealPlanning({
           <p className="muted">{plannedCount} / {session.max_selected_meals} suggestions set · {remaining} points left</p>
         </div>
       </div>
+      {schoolMenu && <SchoolLunchStrip menu={schoolMenu} />}
       <div className="filter-tabs">
         {(["favourites", "asian", "vego"] as const).map((option) => (
           <button key={option} className={filter === option ? "filter-tab active" : "filter-tab"} onClick={() => setFilter(option)}>

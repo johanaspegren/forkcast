@@ -43,6 +43,64 @@ http://localhost:5173
 
 Phones on the same LAN can use the Vite network URL printed by `npm run dev`.
 
+## Raspberry Pi Home Server
+
+Yes, Forkcast can run on a Raspberry Pi as a LAN server. A Raspberry Pi 4 or 5 is a good target.
+
+Install system dependencies:
+
+```bash
+sudo apt update
+sudo apt install -y git nodejs npm python3 python3-venv
+```
+
+Clone or copy the project to the Pi, then install app dependencies:
+
+```bash
+cd forkcast-2
+npm install
+python3 -m venv .venv
+.venv/bin/pip install -r backend/requirements.txt
+```
+
+Build the phone UI and run the combined server:
+
+```bash
+npm run build
+npm run serve
+```
+
+Open from phones on the same Wi-Fi:
+
+```text
+http://<raspberry-pi-ip>:8000
+```
+
+Optional systemd service:
+
+```ini
+[Unit]
+Description=Forkcast
+After=network-online.target
+
+[Service]
+WorkingDirectory=/home/pi/forkcast-2
+ExecStart=/home/pi/forkcast-2/.venv/bin/python -m uvicorn backend.forkcast.main:app --host 0.0.0.0 --port 8000
+Restart=always
+User=pi
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Save that as `/etc/systemd/system/forkcast.service`, then run:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now forkcast
+sudo systemctl status forkcast
+```
+
 ## Simulation Mode
 
 Use **Create Simulation** on the first screen to create a session as yourself plus three simulated players: Anna, Elsa, and Oscar.
@@ -65,6 +123,16 @@ Implemented prototype commitments:
 - **I'll Clean** toggles the player for cleanup.
 
 For this prototype pass, every player has **I'll Cook** and **I'll Clean** available directly on meal proposals. These commitments do not grant Voting Points; they are already strategically useful because they help lock preferred meals. Wild Card, Roulette, and Swap are held back while the core negotiation loop is refined. A proposal can only be locked when it is leading its day and has both chef and cleanup volunteers.
+
+## School Menu Context
+
+Forkcast can fetch the Hässleholm Matilda school menu from:
+
+```text
+https://menu.matildaplatform.com/meals/week/6752f62a2554115c468f8cb8_forskola-skola
+```
+
+The planning screen shows the current week’s school lunches as soft context. It does not block dinner choices yet.
 
 ## Prototype Notes
 

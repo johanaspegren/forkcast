@@ -312,6 +312,62 @@ h3 {
   gap: 8px;
 }
 
+.school-menu-strip {
+  border-radius: 8px;
+  background: #182120;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.school-menu-title {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.school-menu-title span {
+  color: #aebbb0;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.school-menu-days {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(150px, 1fr);
+  gap: 8px;
+  overflow-x: auto;
+}
+
+.school-menu-day {
+  min-height: 90px;
+  border-radius: 8px;
+  background: #101717;
+  padding: 8px;
+  display: grid;
+  align-content: start;
+  gap: 4px;
+}
+
+.school-menu-day strong {
+  color: #f2b84b;
+  font-size: 0.8rem;
+}
+
+.school-menu-day span,
+.school-menu-day small {
+  color: #d8dfd5;
+  font-size: 0.76rem;
+  line-height: 1.2;
+}
+
+.school-menu-day small {
+  color: #8bd5a9;
+}
+
 .filter-tab {
   min-height: 40px;
   background: #202b2a;

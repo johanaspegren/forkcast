@@ -1,5 +1,6 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 
+from backend.forkcast.api.school_menu import fetch_matilda_school_menu
 from backend.forkcast.api.websocket import manager
 from backend.forkcast.game.engine import engine
 from backend.forkcast.game.models import (
@@ -25,6 +26,11 @@ def health() -> dict[str, str]:
 @router.get("/meals")
 def meals() -> list[dict]:
     return [meal.model_dump(mode="json") for meal in engine.all_meals()]
+
+
+@router.get("/school-menu")
+def school_menu(url: str = Query(...)) -> dict:
+    return fetch_matilda_school_menu(url)
 
 
 @router.post("/sessions")

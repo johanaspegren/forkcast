@@ -1,4 +1,4 @@
-import type { Session } from "../game/gameTypes";
+import type { SchoolMenu, Session } from "../game/gameTypes";
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch(path, {
@@ -17,6 +17,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
 export const api = {
   meals: () => request("/api/meals"),
+  schoolMenu: (url: string) => request<SchoolMenu>(`/api/school-menu?url=${encodeURIComponent(url)}`),
   createSession: (maxSelectedMeals = 3) =>
     request<Session>("/api/sessions", {
       method: "POST",
