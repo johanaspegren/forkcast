@@ -12,6 +12,8 @@ const titleCase = (value: string) => value.slice(0, 1).toUpperCase() + value.sli
 const SCHOOL_MENU_URL = "https://menu.matildaplatform.com/meals/week/6752f62a2554115c468f8cb8_forskola-skola";
 const defaultCrewLabels = { cook: "Cook", clean: "Cleaner" };
 const defaultDayStatusLabels = { today: "Today", reserved: "Reserved", leading: "Leading", open: "Open" };
+const defaultNutritionLabels = { calories: "cals", protein: "prots" };
+const defaultStatusLabels = { mock: "Mock demo", live: "Updates live" };
 
 const menuThemes = [
   {
@@ -24,7 +26,28 @@ const menuThemes = [
     crewLabels: { cook: "Chef", clean: "Plonge" },
     detailsWord: "détails",
     footerHint: "Touchez un plat pour les ragots de cuisine",
-    dayStatusLabels: { today: "Ce soir", reserved: "Réservé", leading: "En tête", open: "Libre" }
+    dayStatusLabels: { today: "Ce soir", reserved: "Réservé", leading: "En tête", open: "Libre" },
+    dayNames: {
+      monday: "Lundi",
+      tuesday: "Mardi",
+      wednesday: "Mercredi",
+      thursday: "Jeudi",
+      friday: "Vendredi",
+      saturday: "Samedi",
+      sunday: "Dimanche"
+    } as Record<string, string> | undefined,
+    nutritionLabels: { calories: "cal", protein: "prot." },
+    statusLabels: { mock: "Démo", live: "En direct" },
+    phaseLabels: {
+      LOBBY: "Salon",
+      MEAL_SELECTION: "Choix des plats",
+      SECRET_PLACEMENT: "Placement secret",
+      REVEAL: "Révélation",
+      NEGOTIATION: "Négociation",
+      RULE_RESOLUTION: "Résolution",
+      FINAL_VOTE: "Vote final",
+      COMPLETE: "Terminé"
+    } as Record<string, string> | undefined
   },
   {
     className: "theme-artdeco",
@@ -36,7 +59,11 @@ const menuThemes = [
     crewLabels: { cook: "Chef", clean: "Busser" },
     detailsWord: "dossier",
     footerHint: "Tap a dish. The band plays on.",
-    dayStatusLabels: { today: "Tonight", reserved: "Booked", leading: "Headlining", open: "Open Table" }
+    dayStatusLabels: { today: "Tonight", reserved: "Booked", leading: "Headlining", open: "Open Table" },
+    dayNames: undefined,
+    nutritionLabels: defaultNutritionLabels,
+    statusLabels: defaultStatusLabels,
+    phaseLabels: undefined
   },
   {
     className: "theme-pizzeria",
@@ -48,19 +75,35 @@ const menuThemes = [
     crewLabels: { cook: "Pizzaiolo", clean: "Busboy" },
     detailsWord: "specials",
     footerHint: "Tap a dish. No substitutions, capisce?",
-    dayStatusLabels: { today: "Tonight", reserved: "On The Menu", leading: "Crowd Favorite", open: "Ask Your Server" }
+    dayStatusLabels: { today: "Tonight", reserved: "On The Menu", leading: "Crowd Favorite", open: "Ask Your Server" },
+    dayNames: undefined,
+    nutritionLabels: defaultNutritionLabels,
+    statusLabels: defaultStatusLabels,
+    phaseLabels: undefined
   },
   {
     className: "theme-neko",
     active: true,
-    label: "🐱 Lucky Cat Café",
-    venue: "Neko Café Menu",
+    label: "🐱 Lucky Cat カフェ",
+    venue: "Neko カフェ Menu",
     tagline: "Kawaii bites, big feelings!!!",
     badgeLabel: "Today's Fave",
     crewLabels: { cook: "Itamae", clean: "Kouhai" },
     detailsWord: "menu",
     footerHint: "Tap a dish. Purr-fect picks ahead!!!",
-    dayStatusLabels: { today: "Tonight!!!", reserved: "On Deck", leading: "Fan Favorite", open: "Ask Nyan~" }
+    dayStatusLabels: { today: "Tonight!!!", reserved: "On Deck", leading: "Fan Favorite", open: "Ask Nyan~" },
+    dayNames: {
+      monday: "月曜日",
+      tuesday: "火曜日",
+      wednesday: "水曜日",
+      thursday: "木曜日",
+      friday: "金曜日",
+      saturday: "土曜日",
+      sunday: "日曜日"
+    } as Record<string, string> | undefined,
+    nutritionLabels: defaultNutritionLabels,
+    statusLabels: defaultStatusLabels,
+    phaseLabels: undefined
   },
   {
     className: "theme-chalkboard",
@@ -72,7 +115,11 @@ const menuThemes = [
     crewLabels: defaultCrewLabels,
     detailsWord: "details",
     footerHint: "Tap a dish for kitchen gossip",
-    dayStatusLabels: defaultDayStatusLabels
+    dayStatusLabels: defaultDayStatusLabels,
+    dayNames: undefined,
+    nutritionLabels: defaultNutritionLabels,
+    statusLabels: defaultStatusLabels,
+    phaseLabels: undefined
   },
   {
     className: "theme-gazette",
@@ -84,7 +131,11 @@ const menuThemes = [
     crewLabels: defaultCrewLabels,
     detailsWord: "details",
     footerHint: "Tap a dish for kitchen gossip",
-    dayStatusLabels: defaultDayStatusLabels
+    dayStatusLabels: defaultDayStatusLabels,
+    dayNames: undefined,
+    nutritionLabels: defaultNutritionLabels,
+    statusLabels: defaultStatusLabels,
+    phaseLabels: undefined
   },
   {
     className: "theme-diner",
@@ -96,7 +147,11 @@ const menuThemes = [
     crewLabels: defaultCrewLabels,
     detailsWord: "details",
     footerHint: "Tap a dish for kitchen gossip",
-    dayStatusLabels: defaultDayStatusLabels
+    dayStatusLabels: defaultDayStatusLabels,
+    dayNames: undefined,
+    nutritionLabels: defaultNutritionLabels,
+    statusLabels: defaultStatusLabels,
+    phaseLabels: undefined
   },
   {
     className: "theme-scoreboard",
@@ -108,7 +163,11 @@ const menuThemes = [
     crewLabels: defaultCrewLabels,
     detailsWord: "details",
     footerHint: "Tap a dish for kitchen gossip",
-    dayStatusLabels: defaultDayStatusLabels
+    dayStatusLabels: defaultDayStatusLabels,
+    dayNames: undefined,
+    nutritionLabels: defaultNutritionLabels,
+    statusLabels: defaultStatusLabels,
+    phaseLabels: undefined
   }
 ];
 const activeMenuThemes = menuThemes.filter((menuTheme) => menuTheme.active);
@@ -560,6 +619,7 @@ function DisplayScreen({
 
   const theme = forcedTheme ?? activeMenuThemes[activeIndex] ?? menuThemes[0];
   const today = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+  const dayLabel = (day: string) => theme.dayNames?.[day] ?? titleCase(day);
 
   if (!session) {
     return (
@@ -578,6 +638,8 @@ function DisplayScreen({
       </main>
     );
   }
+
+  const phaseLabel = theme.phaseLabels?.[session.phase] ?? session.phase.replace("_", " ");
 
   const menuEntries = session.days.map((day) => {
     const locked = session.week[day];
@@ -632,7 +694,7 @@ function DisplayScreen({
 
         <div className="display-subhead">
           <span>{theme.tagline}</span>
-          <span>{session.phase.replace("_", " ")}</span>
+          <span>{phaseLabel}</span>
         </div>
 
         <div className="display-landscape-board">
@@ -640,11 +702,11 @@ function DisplayScreen({
             <section className="display-today-feature">
               {isSelectedToday
                 ? <span className="display-badge">{theme.badgeLabel}</span>
-                : <p className="display-kicker">{titleCase(selectedEntry.day)} {theme.detailsWord}</p>}
+                : <p className="display-kicker">{dayLabel(selectedEntry.day)} {theme.detailsWord}</p>}
               <div className="display-today-dish">
                 <span className="display-emoji">{selectedEntry.meal?.emoji ?? "?"}</span>
                 <div>
-                  <small>{titleCase(selectedEntry.day)}</small>
+                  <small>{dayLabel(selectedEntry.day)}</small>
                   <h2>{selectedEntry.meal?.name ?? "Chef's choice"}</h2>
                   <p>{selectedMealDetails.bit}</p>
                 </div>
@@ -678,8 +740,8 @@ function DisplayScreen({
                 </div>
               </div>
               <div className="display-nutrition">
-                <span>{selectedMealDetails.calories} cals</span>
-                <span>{selectedMealDetails.protein}g prots</span>
+                <span>{selectedMealDetails.calories} {theme.nutritionLabels.calories}</span>
+                <span>{selectedMealDetails.protein}g {theme.nutritionLabels.protein}</span>
               </div>
               <div className="display-ingredients">
                 {selectedMealDetails.ingredients.map((ingredient) => (
@@ -705,7 +767,7 @@ function DisplayScreen({
                   type="button"
                 >
                   <div className="display-day">
-                    <span>{titleCase(day)}</span>
+                    <span>{dayLabel(day)}</span>
                     <small>
                       {day === todayEntry?.day
                         ? theme.dayStatusLabels.today
@@ -749,7 +811,7 @@ function DisplayScreen({
         </div>
 
         <footer className="display-footer">
-          <span>{session.id === "mock-week" ? "Mock demo" : "Updates live"}</span>
+          <span>{session.id === "mock-week" ? theme.statusLabels.mock : theme.statusLabels.live}</span>
           <span>{theme.footerHint}</span>
         </footer>
 

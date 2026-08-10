@@ -1879,6 +1879,20 @@ h3 {
   font-size: clamp(1.9rem, 3.8vw, 2.9rem);
 }
 
+.theme-neko .display-menu-header::before {
+  content: "";
+  position: absolute;
+  left: clamp(120px, 15vw, 160px);
+  top: 50%;
+  transform: translateY(-50%);
+  width: 74px;
+  height: 74px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cellipse cx='50' cy='62' rx='34' ry='30' fill='%23ffffff' stroke='%233a2a22' stroke-width='3'/%3E%3Cpath d='M22 38 L30 14 L42 34 Z' fill='%23ffffff' stroke='%233a2a22' stroke-width='3'/%3E%3Cpath d='M78 38 L70 14 L58 34 Z' fill='%23ffffff' stroke='%233a2a22' stroke-width='3'/%3E%3Cpath d='M26 34 L30 20 L38 32 Z' fill='%23f6c9c9'/%3E%3Cpath d='M74 34 L70 20 L62 32 Z' fill='%23f6c9c9'/%3E%3Cpath d='M36 58 Q40 50 44 58' fill='none' stroke='%233a2a22' stroke-width='3' stroke-linecap='round'/%3E%3Cpath d='M56 58 Q60 50 64 58' fill='none' stroke='%233a2a22' stroke-width='3' stroke-linecap='round'/%3E%3Cpath d='M46 68 Q50 72 54 68' fill='none' stroke='%233a2a22' stroke-width='3' stroke-linecap='round'/%3E%3Ccircle cx='34' cy='64' r='4' fill='%23f6a5a5' opacity='0.8'/%3E%3Ccircle cx='66' cy='64' r='4' fill='%23f6a5a5' opacity='0.8'/%3E%3Cpath d='M34 82 Q50 90 66 82' fill='none' stroke='%23e34b4b' stroke-width='6' stroke-linecap='round'/%3E%3Ccircle cx='50' cy='88' r='4' fill='%23f0c14b' stroke='%233a2a22' stroke-width='1.5'/%3E%3Cellipse cx='80' cy='70' rx='9' ry='13' fill='%23ffffff' stroke='%233a2a22' stroke-width='3' transform='rotate(-15 80 70)'/%3E%3C/svg%3E");
+  background-size: contain;
+  background-repeat: no-repeat;
+  pointer-events: none;
+}
+
 .theme-neko .display-day span {
   font-family: var(--dt-heading-font);
   font-weight: 400;
