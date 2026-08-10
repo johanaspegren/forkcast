@@ -89,6 +89,9 @@ class Session(BaseModel):
     starting_voting_points: int = 10
     max_selected_meals: int = 3
     max_action_cards_played: int = 2
+    rule_overrides: list[str] = Field(default_factory=list)
+    general_assembly: dict[str, dict[str, int]] = Field(default_factory=dict)
+    general_assembly_threshold: int = 4
 
 
 class JoinRequest(BaseModel):
@@ -131,6 +134,17 @@ class LockDayRequest(BaseModel):
 
 class PassTurnRequest(BaseModel):
     player_id: str
+
+
+class GeneralAssemblyRequest(BaseModel):
+    player_id: str
+    rule_id: str
+    points: int
+
+
+class UnlockDayRequest(BaseModel):
+    player_id: str
+    day: str
 
 
 class CardPlayRequest(BaseModel):

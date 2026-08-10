@@ -6,12 +6,14 @@ from backend.forkcast.game.engine import engine
 from backend.forkcast.game.models import (
     CardPlayRequest,
     CreateSessionRequest,
+    GeneralAssemblyRequest,
     JoinRequest,
     LockDayRequest,
     MealSelectionRequest,
     PassTurnRequest,
     PlacementRequest,
     Session,
+    UnlockDayRequest,
     VoteRequest,
 )
 
@@ -118,6 +120,20 @@ async def pass_turn(session_id: str, request: PassTurnRequest) -> Session:
 @router.post("/sessions/{session_id}/lock-day")
 async def lock_day(session_id: str, request: LockDayRequest) -> Session:
     session = engine.lock_day(session_id, request)
+    await manager.broadcast(session)
+    return session
+
+
+@router.post("/sessions/{session_id}/general-assembly")
+async def call_general_assembly(session_id: str, request: GeneralAssemblyRequest) -> Session:
+    session = engine.call_general_assembly(session_id, request)
+    await manager.broadcast(session)
+    return session
+
+
+@router.post("/sessions/{session_id}/unlock-day")
+async def unlock_day(session_id: str, request: UnlockDayRequest) -> Session:
+    session = engine.unlock_day(session_id, request)
     await manager.broadcast(session)
     return session
 

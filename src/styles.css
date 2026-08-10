@@ -785,6 +785,29 @@ h3 {
   background: #ffe7df;
 }
 
+.general-assembly {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.general-assembly small {
+  color: #9f4a26;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.general-assembly button {
+  min-height: 32px;
+  padding: 0 10px;
+  background: #ffd9a0;
+  color: #6b3a12;
+  font-size: 0.78rem;
+}
+
 .locked-meal {
   display: grid;
   grid-template-columns: 48px 1fr;
@@ -796,8 +819,35 @@ h3 {
   grid-column: 2;
 }
 
+.unlock-button {
+  grid-column: 2;
+  justify-self: start;
+  min-height: 32px;
+  padding: 0 10px;
+  background: transparent;
+  color: #9f322b;
+  font-size: 0.76rem;
+  border: 1px solid rgba(159, 50, 43, 0.32);
+}
+
 .final h2 {
   font-size: 2.05rem;
+}
+
+@media (min-width: 760px) {
+  .shell {
+    width: min(100%, 1120px);
+  }
+
+  .day-stack {
+    grid-template-columns: repeat(5, minmax(150px, 1fr));
+    align-items: start;
+  }
+
+  .meal-grid,
+  .players-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
 }
 
 .display-shell {

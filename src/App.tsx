@@ -270,7 +270,10 @@ const MOCK_WEEKLY_SESSION: Session = {
   max_players: 4,
   starting_voting_points: 10,
   max_selected_meals: 3,
-  max_action_cards_played: 2
+  max_action_cards_played: 2,
+  rule_overrides: [],
+  general_assembly: {},
+  general_assembly_threshold: 4
 };
 
 export default function App() {
@@ -513,6 +516,8 @@ export default function App() {
           onPlayCard={(payload) => run(() => api.playCard(session.id, { player_id: playerId, ...payload }))}
           onPass={() => run(() => api.passTurn(session.id, playerId))}
           onLock={(day, proposalId) => run(() => api.lockDay(session.id, playerId, day, proposalId))}
+          onUnlock={(day) => run(() => api.unlockDay(session.id, playerId, day))}
+          onGeneralAssembly={(ruleId, points) => run(() => api.generalAssembly(session.id, playerId, ruleId, points))}
           onComplete={() => run(() => api.complete(session.id))}
         />
       )}
@@ -1071,6 +1076,8 @@ function Board({
   onPlayCard,
   onPass,
   onLock,
+  onUnlock,
+  onGeneralAssembly,
   onComplete
 }: {
   session: Session;
@@ -1080,11 +1087,14 @@ function Board({
   onPlayCard: (payload: { card: string; proposal_id?: string; day?: string; target_day?: string; meal_id?: string }) => void;
   onPass: () => void;
   onLock: (day: string, proposalId: string) => void;
+  onUnlock: (day: string) => void;
+  onGeneralAssembly: (ruleId: string, points: number) => void;
   onComplete: () => void;
 }) {
   const currentTurnId = session.turn_order[session.current_turn_index % Math.max(1, session.turn_order.length)];
   const currentTurnPlayer = currentTurnId ? session.players[currentTurnId] : undefined;
   const isYourTurn = currentTurnId === playerId;
+  const myPointsRemaining = session.player_state[playerId]?.voting_points_remaining ?? 0;
 
   return (
     <section className="stage">
@@ -1100,12 +1110,28 @@ function Board({
         </div>
       )}
       <div className="rules-strip">
-        {session.rules.map((rule) => (
-          <div key={rule.id} className={rule.satisfied ? "rule ok" : "rule warn"}>
-            <strong>{rule.satisfied ? "OK" : "Rule"}</strong>
-            <span>{rule.label}</span>
-          </div>
-        ))}
+        {session.rules.map((rule) => {
+          const contributions = session.general_assembly[rule.id] ?? {};
+          const totalPoints = Object.values(contributions).reduce((sum, value) => sum + value, 0);
+          const myContribution = contributions[playerId] ?? 0;
+          return (
+            <div key={rule.id} className={rule.satisfied ? "rule ok" : "rule warn"}>
+              <strong>{rule.satisfied ? "OK" : "Rule"}</strong>
+              <span>{rule.label}</span>
+              {!rule.satisfied && rule.level === "HOUSE" && (
+                <div className="general-assembly">
+                  <small>
+                    General Assembly: {totalPoints}/{session.general_assembly_threshold} points
+                    {myContribution > 0 ? ` · you gave ${myContribution}` : ""}
+                  </small>
+                  <button disabled={myPointsRemaining < 1} onClick={() => onGeneralAssembly(rule.id, 1)}>
+                    <Plus size={14} /> Support Exception
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
       <div className="day-stack">
         {session.days.map((day) => (
@@ -1119,6 +1145,7 @@ function Board({
             onVote={onVote}
             onPlayCard={onPlayCard}
             onLock={onLock}
+            onUnlock={onUnlock}
           />
         ))}
       </div>
@@ -1146,7 +1173,8 @@ function DayColumn({
   disabled,
   onVote,
   onPlayCard,
-  onLock
+  onLock,
+  onUnlock
 }: {
   day: string;
   session: Session;
@@ -1156,6 +1184,7 @@ function DayColumn({
   onVote: (proposalId: string, kind: "support" | "withdraw" | "downvote") => void;
   onPlayCard: (payload: { card: string; proposal_id?: string; day?: string; target_day?: string; meal_id?: string }) => void;
   onLock: (day: string, proposalId: string) => void;
+  onUnlock: (day: string) => void;
 }) {
   const proposals = Object.values(session.proposals)
     .filter((proposal) => proposal.day === day)
@@ -1175,6 +1204,9 @@ function DayColumn({
           <strong>{meals[locked.meal_id]?.name}</strong>
           <small>Chef: {locked.chef.map((id) => session.players[id]?.name).join(", ") || "Unassigned"}</small>
           <small>Cleanup: {locked.cleanup.map((id) => session.players[id]?.name).join(", ") || "Unassigned"}</small>
+          <button className="unlock-button" onClick={() => onUnlock(day)}>
+            Unlock
+          </button>
         </div>
       ) : (
         proposals.map((proposal) => (
@@ -1311,6 +1343,15 @@ function FinalForkcast({ session, meals }: { session: Session; meals: Record<str
     <section className="stage final">
       <p className="eyebrow">The Forkcast Is In</p>
       <h2>Dinner is decided</h2>
+      {session.rule_overrides.length > 0 && (
+        <div className="turn-log">
+          {session.rule_overrides.map((ruleId) => (
+            <p key={ruleId}>
+              General Assembly Exception: {session.rules.find((rule) => rule.id === ruleId)?.label ?? ruleId}
+            </p>
+          ))}
+        </div>
+      )}
       <div className="day-stack">
         {session.days.map((day) => {
           const entry = session.week[day];

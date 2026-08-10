@@ -91,5 +91,15 @@ export const api = {
         rule_exceptions: ruleExceptions
       })
     }),
+  generalAssembly: (sessionId: string, playerId: string, ruleId: string, points: number) =>
+    request<Session>(`/api/sessions/${sessionId}/general-assembly`, {
+      method: "POST",
+      body: JSON.stringify({ player_id: playerId, rule_id: ruleId, points })
+    }),
+  unlockDay: (sessionId: string, playerId: string, day: string) =>
+    request<Session>(`/api/sessions/${sessionId}/unlock-day`, {
+      method: "POST",
+      body: JSON.stringify({ player_id: playerId, day })
+    }),
   complete: (sessionId: string) => request<Session>(`/api/sessions/${sessionId}/complete`, { method: "POST" })
 };

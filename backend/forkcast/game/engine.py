@@ -9,6 +9,7 @@ from .models import (
     CardPlayRequest,
     CreateSessionRequest,
     GamePhase,
+    GeneralAssemblyRequest,
     JoinRequest,
     LockDayRequest,
     Meal,
@@ -20,6 +21,7 @@ from .models import (
     Proposal,
     RuleStatus,
     Session,
+    UnlockDayRequest,
     VoteRequest,
     WeekEntry,
 )
@@ -371,6 +373,53 @@ class GameEngine:
             session.phase = GamePhase.FINAL_VOTE
         return self._refresh_rules(session)
 
+    def call_general_assembly(self, session_id: str, request: GeneralAssemblyRequest) -> Session:
+        session = self._require_phase(session_id, GamePhase.NEGOTIATION, GamePhase.FINAL_VOTE)
+        rule = next((rule for rule in session.rules if rule.id == request.rule_id), None)
+        if not rule:
+            raise HTTPException(status_code=404, detail="Rule not found")
+        if rule.level != "HOUSE":
+            raise HTTPException(status_code=422, detail="Only house rules can be overridden")
+        if request.points <= 0:
+            raise HTTPException(status_code=422, detail="Points must be positive")
+        player_state = self._player_state(session, request.player_id)
+        if player_state.voting_points_remaining < request.points:
+            raise HTTPException(status_code=409, detail="Not enough Voting Points")
+
+        player_state.voting_points_remaining -= request.points
+        contributions = session.general_assembly.setdefault(request.rule_id, {})
+        contributions[request.player_id] = contributions.get(request.player_id, 0) + request.points
+        total = sum(contributions.values())
+        player_name = session.players[request.player_id].name
+        self._log(session, f"{player_name} committed {request.points} Voting Points to a General Assembly on '{rule.label}'.")
+
+        if total >= session.general_assembly_threshold and request.rule_id not in session.rule_overrides:
+            session.rule_overrides.append(request.rule_id)
+            self._log(session, f"General Assembly passed: '{rule.label}' is overruled ({total} points).")
+        return self._refresh_rules(session)
+
+    def unlock_day(self, session_id: str, request: UnlockDayRequest) -> Session:
+        session = self._require_phase(session_id, GamePhase.NEGOTIATION, GamePhase.FINAL_VOTE)
+        entry = session.week.get(request.day)
+        if not entry:
+            raise HTTPException(status_code=409, detail="Day is not locked")
+        proposal = next(
+            (
+                proposal
+                for proposal in session.proposals.values()
+                if proposal.day == request.day and proposal.meal_id == entry.meal_id and proposal.status == "LOCKED"
+            ),
+            None,
+        )
+        if proposal:
+            proposal.status = "ACTIVE"
+        session.week[request.day] = None
+        if session.phase == GamePhase.FINAL_VOTE:
+            session.phase = GamePhase.NEGOTIATION
+        player_name = session.players[request.player_id].name
+        self._log(session, f"{player_name} unlocked {MEALS[entry.meal_id].name} for {request.day}.")
+        return self._refresh_rules(session)
+
     def complete(self, session_id: str) -> Session:
         session = self._require_phase(session_id, GamePhase.FINAL_VOTE)
         if not all(session.week.values()):
@@ -406,7 +455,7 @@ class GameEngine:
         locked_meals = [entry.meal_id for entry in session.week.values() if entry]
         fish_count = sum(1 for meal_id in locked_meals if MEALS[meal_id].fish)
         minced_count = sum(1 for meal_id in locked_meals if MEALS[meal_id].minced_meat)
-        session.rules = [
+        rules = [
             RuleStatus(
                 id="one_fish",
                 label="At least 1 fish meal per week",
@@ -422,6 +471,11 @@ class GameEngine:
                 detail=f"{minced_count} minced-meat meals locked",
             ),
         ]
+        for rule in rules:
+            if not rule.satisfied and rule.id in session.rule_overrides:
+                rule.satisfied = True
+                rule.detail = f"{rule.detail} — overruled by General Assembly"
+        session.rules = rules
         return session
 
     def _simulate_votes(self, session: Session, simulated_ids: list[str]) -> None:

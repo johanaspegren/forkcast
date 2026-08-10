@@ -84,6 +84,9 @@ export type Session = {
   starting_voting_points: number;
   max_selected_meals: number;
   max_action_cards_played: number;
+  rule_overrides: string[];
+  general_assembly: Record<string, Record<string, number>>;
+  general_assembly_threshold: number;
 };
 
 export type SchoolMenuCourse = {
