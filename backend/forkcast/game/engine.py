@@ -6,11 +6,14 @@ import uuid
 from fastapi import HTTPException
 
 from .models import (
+    CardPlayRequest,
+    CreateSessionRequest,
     GamePhase,
     JoinRequest,
     LockDayRequest,
     Meal,
     MealSelectionRequest,
+    PassTurnRequest,
     PlacementRequest,
     Player,
     PlayerSession,
@@ -23,7 +26,7 @@ from .models import (
 
 DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday"]
 AVATARS = ["🥘", "🍕", "🌮", "🍜", "🥗", "🍛", "🐟", "🍳"]
-ACTION_DECK = ["ROULETTE", "SWAP", "ILL_COOK", "ILL_CLEAN", "COALITION", "WILD_CARD"]
+ACTION_DECK = ["ILL_COOK", "ILL_CLEAN"]
 SIMULATED_PLAYERS = [
     ("Anna", "🍕"),
     ("Elsa", "🌮"),
@@ -57,14 +60,17 @@ class GameEngine:
     def __init__(self) -> None:
         self.sessions: dict[str, Session] = {}
 
-    def create_session(self) -> Session:
+    def create_session(self, request: CreateSessionRequest | None = None) -> Session:
         session_id = uuid.uuid4().hex[:8]
+        max_selected_meals = request.max_selected_meals if request else 3
+        max_selected_meals = max(1, min(5, max_selected_meals))
         session = Session(
             id=session_id,
             join_code=f"FORK-{self._join_suffix()}",
             phase=GamePhase.LOBBY,
             days=DAYS.copy(),
             week={day: None for day in DAYS},
+            max_selected_meals=max_selected_meals,
         )
         self.sessions[session_id] = session
         return self._refresh_rules(session)
@@ -139,11 +145,13 @@ class GameEngine:
 
         if session.phase == GamePhase.REVEAL:
             session.phase = GamePhase.NEGOTIATION
+            self._start_turns(session)
             return self._refresh_rules(session)
 
         if session.phase == GamePhase.NEGOTIATION:
-            self._simulate_votes(session, simulated_ids)
-            self._lock_week_from_leaders(session)
+            current_player_id = self._current_player_id(session)
+            if current_player_id and session.players[current_player_id].simulated:
+                self._simulate_turn(session, current_player_id)
             if all(session.week.values()):
                 session.phase = GamePhase.FINAL_VOTE
             return self._refresh_rules(session)
@@ -176,8 +184,8 @@ class GameEngine:
         session.player_state[player_id] = PlayerSession(
             player_id=player_id,
             voting_points_remaining=session.starting_voting_points,
-            meal_cards=rotation,
-            action_cards=random.sample(ACTION_DECK, 3),
+            meal_cards=list(MEALS),
+            action_cards=["ILL_COOK", "ILL_CLEAN"],
         )
         return self._refresh_rules(session)
 
@@ -230,20 +238,48 @@ class GameEngine:
     def begin_negotiation(self, session_id: str) -> Session:
         session = self._require_phase(session_id, GamePhase.REVEAL)
         session.phase = GamePhase.NEGOTIATION
+        self._start_turns(session)
         return self._refresh_rules(session)
 
     def vote(self, session_id: str, request: VoteRequest) -> Session:
         session = self._require_phase(session_id, GamePhase.NEGOTIATION)
+        self._require_turn(session, request.player_id)
         player_state = self._player_state(session, request.player_id)
         proposal = session.proposals.get(request.proposal_id)
         if not proposal:
             raise HTTPException(status_code=404, detail="Proposal not found")
 
         if request.kind == "support":
+            current_downvote = proposal.downvote_points.get(request.player_id, 0)
+            if current_downvote > 0:
+                proposal.downvote_points[request.player_id] = current_downvote - 1
+                if proposal.downvote_points[request.player_id] <= 0:
+                    proposal.downvote_points.pop(request.player_id)
+                proposal.downvotes = max(0, proposal.downvotes - 1)
+                proposal.voting_points += 1
+                player_state.voting_points_remaining += 3
+                self._log(session, f"{session.players[request.player_id].name} withdrew a downvote from {MEALS[proposal.meal_id].name}.")
+                return self._refresh_rules(session)
             cost = 1
             delta = 1
             if request.player_id in proposal.owners:
                 cost = 2
+        elif request.kind == "withdraw":
+            current_support = proposal.support_points.get(request.player_id, 0)
+            if current_support > 0:
+                refund = 2 if request.player_id in proposal.owners else 1
+                proposal.support_points[request.player_id] = current_support - 1
+                if proposal.support_points[request.player_id] <= 0:
+                    proposal.support_points.pop(request.player_id)
+                proposal.voting_points -= 1
+                player_state.voting_points_remaining += refund
+                if proposal.support_points.get(request.player_id, 0) == 0 and request.player_id in proposal.supporters:
+                    proposal.supporters.remove(request.player_id)
+                self._log(session, f"{session.players[request.player_id].name} withdrew support from {MEALS[proposal.meal_id].name}.")
+                return self._refresh_rules(session)
+            request.kind = "downvote"
+            cost = 3
+            delta = -1
         elif request.kind == "downvote":
             cost = 3
             delta = -1
@@ -256,24 +292,81 @@ class GameEngine:
         proposal.voting_points += delta
         if request.kind == "support" and request.player_id not in proposal.supporters:
             proposal.supporters.append(request.player_id)
+        if request.kind == "support":
+            proposal.support_points[request.player_id] = proposal.support_points.get(request.player_id, 0) + 1
         if request.kind == "downvote":
             proposal.downvotes += 1
+            proposal.downvote_points[request.player_id] = proposal.downvote_points.get(request.player_id, 0) + 1
+        self._log(session, f"{session.players[request.player_id].name} {'supported' if request.kind == 'support' else 'downvoted'} {MEALS[proposal.meal_id].name}.")
+        return self._refresh_rules(session)
+
+    def play_card(self, session_id: str, request: CardPlayRequest) -> Session:
+        session = self._require_phase(session_id, GamePhase.NEGOTIATION)
+        self._require_turn(session, request.player_id)
+        player_state = self._player_state(session, request.player_id)
+        if request.card not in player_state.action_cards:
+            raise HTTPException(status_code=422, detail="Card is not in this player's hand")
+
+        if request.card == "ILL_COOK":
+            proposal = self._active_proposal(session, request.proposal_id)
+            if proposal.id in player_state.cook_commitments:
+                player_state.cook_commitments.remove(proposal.id)
+                if request.player_id in proposal.chef_volunteers:
+                    proposal.chef_volunteers.remove(request.player_id)
+                self._log(session, f"{session.players[request.player_id].name} is no longer cooking {MEALS[proposal.meal_id].name}.")
+                return self._refresh_rules(session)
+            if request.player_id not in proposal.chef_volunteers:
+                proposal.chef_volunteers.append(request.player_id)
+            player_state.cook_commitments.append(proposal.id)
+            self._mark_card_played(player_state, f"ILL_COOK:{proposal.id}")
+            self._log(session, f"{session.players[request.player_id].name} will cook {MEALS[proposal.meal_id].name}.")
+            return self._refresh_rules(session)
+
+        if request.card == "ILL_CLEAN":
+            proposal = self._active_proposal(session, request.proposal_id)
+            if proposal.id in player_state.clean_commitments:
+                player_state.clean_commitments.remove(proposal.id)
+                if request.player_id in proposal.cleanup_volunteers:
+                    proposal.cleanup_volunteers.remove(request.player_id)
+                self._log(session, f"{session.players[request.player_id].name} is no longer cleaning after {MEALS[proposal.meal_id].name}.")
+                return self._refresh_rules(session)
+            if request.player_id not in proposal.cleanup_volunteers:
+                proposal.cleanup_volunteers.append(request.player_id)
+            player_state.clean_commitments.append(proposal.id)
+            self._mark_card_played(player_state, f"ILL_CLEAN:{proposal.id}")
+            self._log(session, f"{session.players[request.player_id].name} will clean after {MEALS[proposal.meal_id].name}.")
+            return self._refresh_rules(session)
+
+        raise HTTPException(status_code=422, detail="Unsupported card")
+
+    def pass_turn(self, session_id: str, request: PassTurnRequest) -> Session:
+        session = self._require_phase(session_id, GamePhase.NEGOTIATION)
+        self._require_turn(session, request.player_id)
+        self._log(session, f"{session.players[request.player_id].name} passed.")
+        self._advance_turn(session)
         return self._refresh_rules(session)
 
     def lock_day(self, session_id: str, request: LockDayRequest) -> Session:
         session = self._require_phase(session_id, GamePhase.NEGOTIATION, GamePhase.FINAL_VOTE)
+        if session.phase == GamePhase.NEGOTIATION:
+            if not request.player_id:
+                raise HTTPException(status_code=422, detail="Player is required to lock during negotiation")
+            self._require_turn(session, request.player_id)
         proposal = session.proposals.get(request.proposal_id)
         if not proposal:
             raise HTTPException(status_code=404, detail="Proposal not found")
         if proposal.day != request.day:
             raise HTTPException(status_code=422, detail="Proposal is for a different day")
+        self._require_lockable(session, proposal)
         session.week[request.day] = WeekEntry(
             meal_id=proposal.meal_id,
-            chef=request.chef,
-            cleanup=request.cleanup,
+            chef=proposal.chef_volunteers[:1],
+            cleanup=proposal.cleanup_volunteers[:1],
             rule_exceptions=request.rule_exceptions,
         )
         proposal.status = "LOCKED"
+        actor = session.players[request.player_id].name if request.player_id else "The table"
+        self._log(session, f"{actor} locked {MEALS[proposal.meal_id].name} for {request.day}.")
         if all(session.week.values()):
             session.phase = GamePhase.FINAL_VOTE
         return self._refresh_rules(session)
@@ -296,6 +389,7 @@ class GameEngine:
                 if player_id not in proposal.supporters:
                     proposal.supporters.append(player_id)
                 proposal.voting_points += points
+                proposal.support_points[player_id] = proposal.support_points.get(player_id, 0) + points
                 return
         proposal_id = f"proposal_{len(session.proposals) + 1}"
         session.proposals[proposal_id] = Proposal(
@@ -305,6 +399,7 @@ class GameEngine:
             owners=[player_id],
             voting_points=points,
             supporters=[player_id],
+            support_points={player_id: points} if points > 0 else {},
         )
 
     def _refresh_rules(self, session: Session) -> Session:
@@ -349,8 +444,39 @@ class GameEngine:
                 proposal.voting_points += 1 if kind == "support" else -1
                 if kind == "support" and player_id not in proposal.supporters:
                     proposal.supporters.append(player_id)
+                if kind == "support":
+                    proposal.support_points[player_id] = proposal.support_points.get(player_id, 0) + 1
                 if kind == "downvote":
                     proposal.downvotes += 1
+                    proposal.downvote_points[player_id] = proposal.downvote_points.get(player_id, 0) + 1
+                self._log(session, f"{session.players[player_id].name} {'supported' if kind == 'support' else 'downvoted'} {MEALS[proposal.meal_id].name}.")
+
+    def _simulate_turn(self, session: Session, player_id: str) -> None:
+        player_state = session.player_state[player_id]
+        playable_cards = []
+        playable_cards = [card for card in player_state.action_cards]
+        if playable_cards and random.random() < 0.35:
+            self._simulate_card(session, player_id, random.choice(playable_cards))
+            self._advance_turn(session)
+            return
+
+        self._simulate_votes(session, [player_id])
+        if random.random() < 0.75:
+            self._lock_one_day_from_leader(session, player_id)
+        self._advance_turn(session)
+
+    def _simulate_card(self, session: Session, player_id: str, card: str) -> None:
+        active = [proposal for proposal in session.proposals.values() if proposal.status == "ACTIVE"]
+        if card == "ILL_COOK" and active:
+            options = [proposal for proposal in active if proposal.id not in session.player_state[player_id].cook_commitments]
+            if options:
+                self.play_card(session.id, CardPlayRequest(player_id=player_id, card=card, proposal_id=random.choice(options).id))
+            return
+        if card == "ILL_CLEAN" and active:
+            options = [proposal for proposal in active if proposal.id not in session.player_state[player_id].clean_commitments]
+            if options:
+                self.play_card(session.id, CardPlayRequest(player_id=player_id, card=card, proposal_id=random.choice(options).id))
+            return
 
     def _lock_week_from_leaders(self, session: Session) -> None:
         locked_meal_ids = [entry.meal_id for entry in session.week.values() if entry]
@@ -403,13 +529,123 @@ class GameEngine:
                     eligible = fish_options
 
             winner = max(eligible, key=lambda proposal: (proposal.voting_points, len(proposal.supporters)))
-            chef = random.choice(winner.owners)
-            cleanup_options = [player_id for player_id in session.players if player_id != chef] or [chef]
-            cleanup = random.choice(cleanup_options)
-            session.week[day] = WeekEntry(meal_id=winner.meal_id, chef=[chef], cleanup=[cleanup])
+            fallback_player_id = random.choice(winner.owners)
+            self._ensure_chore_commitments(session, winner, fallback_player_id)
+            session.week[day] = WeekEntry(
+                meal_id=winner.meal_id,
+                chef=winner.chef_volunteers[:1],
+                cleanup=winner.cleanup_volunteers[:1],
+            )
             winner.status = "LOCKED"
             fish_locked = fish_locked or MEALS[winner.meal_id].fish
             minced_count += 1 if MEALS[winner.meal_id].minced_meat else 0
+
+    def _lock_one_day_from_leader(self, session: Session, player_id: str) -> None:
+        unlocked_days = [day for day in session.days if session.week[day] is None]
+        if not unlocked_days:
+            return
+        locked_meal_ids = [entry.meal_id for entry in session.week.values() if entry]
+        fish_locked = any(MEALS[meal_id].fish for meal_id in locked_meal_ids)
+        minced_count = sum(1 for meal_id in locked_meal_ids if MEALS[meal_id].minced_meat)
+        day = unlocked_days[-1] if not fish_locked and len(unlocked_days) == 1 else random.choice(unlocked_days)
+        day_proposals = [
+            proposal for proposal in session.proposals.values() if proposal.day == day and proposal.status == "ACTIVE"
+        ]
+        if not day_proposals:
+            fallback_meal_id = "salmon" if not fish_locked and len(unlocked_days) == 1 else "pasta"
+            self._upsert_proposal(session, player_id, fallback_meal_id, day, 0)
+            day_proposals = [
+                proposal for proposal in session.proposals.values() if proposal.day == day and proposal.status == "ACTIVE"
+            ]
+        eligible = day_proposals
+        if minced_count >= 1:
+            non_minced = [proposal for proposal in eligible if not MEALS[proposal.meal_id].minced_meat]
+            if not non_minced:
+                self._upsert_proposal(session, player_id, "pasta", day, 0)
+                non_minced = [
+                    proposal
+                    for proposal in session.proposals.values()
+                    if proposal.day == day and proposal.status == "ACTIVE" and not MEALS[proposal.meal_id].minced_meat
+                ]
+            if non_minced:
+                eligible = non_minced
+        if not fish_locked and len(unlocked_days) == 1:
+            fish_options = [proposal for proposal in day_proposals if MEALS[proposal.meal_id].fish]
+            if not fish_options:
+                self._upsert_proposal(session, player_id, "salmon", day, 0)
+                fish_options = [
+                    proposal
+                    for proposal in session.proposals.values()
+                    if proposal.day == day and proposal.status == "ACTIVE" and MEALS[proposal.meal_id].fish
+                ]
+            if fish_options:
+                eligible = fish_options
+        winner = max(eligible, key=lambda proposal: (proposal.voting_points, len(proposal.supporters)))
+        self._ensure_chore_commitments(session, winner, player_id)
+        session.week[day] = WeekEntry(
+            meal_id=winner.meal_id,
+            chef=winner.chef_volunteers[:1],
+            cleanup=winner.cleanup_volunteers[:1],
+        )
+        winner.status = "LOCKED"
+        self._log(session, f"{session.players[player_id].name} locked {MEALS[winner.meal_id].name} for {day}.")
+
+    def _ensure_chore_commitments(self, session: Session, proposal: Proposal, player_id: str) -> None:
+        if not proposal.chef_volunteers:
+            proposal.chef_volunteers.append(player_id)
+            self._log(session, f"{session.players[player_id].name} volunteered to cook {MEALS[proposal.meal_id].name}.")
+        if not proposal.cleanup_volunteers:
+            proposal.cleanup_volunteers.append(player_id)
+            self._log(session, f"{session.players[player_id].name} volunteered to clean after {MEALS[proposal.meal_id].name}.")
+
+    def _require_lockable(self, session: Session, proposal: Proposal) -> None:
+        day_proposals = [
+            candidate for candidate in session.proposals.values() if candidate.day == proposal.day and candidate.status == "ACTIVE"
+        ]
+        leader = max(day_proposals, key=lambda candidate: (candidate.voting_points, len(candidate.supporters)))
+        if leader.id != proposal.id:
+            raise HTTPException(status_code=409, detail="Only the leading proposal for the day can be locked")
+        if not proposal.chef_volunteers or not proposal.cleanup_volunteers:
+            raise HTTPException(status_code=409, detail="A proposal needs both chef and cleanup volunteers before locking")
+
+    def _start_turns(self, session: Session) -> None:
+        if not session.turn_order:
+            session.turn_order = list(session.players)
+            session.current_turn_index = 0
+            self._log(session, "Negotiation order was set.")
+
+    def _advance_turn(self, session: Session) -> None:
+        if not session.turn_order:
+            self._start_turns(session)
+        if session.phase == GamePhase.NEGOTIATION and session.turn_order:
+            session.current_turn_index = (session.current_turn_index + 1) % len(session.turn_order)
+
+    def _current_player_id(self, session: Session) -> str | None:
+        if not session.turn_order:
+            return None
+        return session.turn_order[session.current_turn_index % len(session.turn_order)]
+
+    def _require_turn(self, session: Session, player_id: str) -> None:
+        current_player_id = self._current_player_id(session)
+        if current_player_id and current_player_id != player_id:
+            raise HTTPException(status_code=409, detail=f"It is {session.players[current_player_id].name}'s turn")
+
+    def _mark_card_played(self, player_state: PlayerSession, card: str) -> None:
+        player_state.action_cards_played.append(card)
+
+    def _active_proposal(self, session: Session, proposal_id: str | None) -> Proposal:
+        if not proposal_id or proposal_id not in session.proposals:
+            raise HTTPException(status_code=404, detail="Proposal not found")
+        proposal = session.proposals[proposal_id]
+        if proposal.status != "ACTIVE":
+            raise HTTPException(status_code=409, detail="Proposal is not active")
+        return proposal
+
+    def _first_unlocked_day(self, session: Session) -> str | None:
+        return next((day for day in session.days if session.week[day] is None), None)
+
+    def _log(self, session: Session, message: str) -> None:
+        session.turn_log = [message, *session.turn_log[:7]]
 
     def _require_phase(self, session_id: str, *phases: GamePhase) -> Session:
         session = self.get_session(session_id)

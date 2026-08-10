@@ -17,7 +17,11 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
 export const api = {
   meals: () => request("/api/meals"),
-  createSession: () => request<Session>("/api/sessions", { method: "POST" }),
+  createSession: (maxSelectedMeals = 3) =>
+    request<Session>("/api/sessions", {
+      method: "POST",
+      body: JSON.stringify({ max_selected_meals: maxSelectedMeals })
+    }),
   getSession: (sessionId: string) => request<Session>(`/api/sessions/${sessionId}`),
   join: (sessionId: string, name: string) =>
     request<Session>(`/api/sessions/${sessionId}/join`, {
@@ -45,26 +49,44 @@ export const api = {
     }),
   continueReveal: (sessionId: string) =>
     request<Session>(`/api/sessions/${sessionId}/reveal/continue`, { method: "POST" }),
-  vote: (sessionId: string, playerId: string, proposalId: string, kind: "support" | "downvote") =>
+  vote: (sessionId: string, playerId: string, proposalId: string, kind: "support" | "withdraw" | "downvote") =>
     request<Session>(`/api/sessions/${sessionId}/vote`, {
       method: "POST",
       body: JSON.stringify({ player_id: playerId, proposal_id: proposalId, kind })
     }),
+  playCard: (
+    sessionId: string,
+    payload: {
+      player_id: string;
+      card: string;
+      proposal_id?: string;
+      day?: string;
+      target_day?: string;
+      meal_id?: string;
+    }
+  ) =>
+    request<Session>(`/api/sessions/${sessionId}/cards/play`, {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }),
+  passTurn: (sessionId: string, playerId: string) =>
+    request<Session>(`/api/sessions/${sessionId}/pass-turn`, {
+      method: "POST",
+      body: JSON.stringify({ player_id: playerId })
+    }),
   lockDay: (
     sessionId: string,
+    playerId: string,
     day: string,
     proposalId: string,
-    chef: string[],
-    cleanup: string[],
     ruleExceptions: string[] = []
   ) =>
     request<Session>(`/api/sessions/${sessionId}/lock-day`, {
       method: "POST",
       body: JSON.stringify({
+        player_id: playerId,
         day,
         proposal_id: proposalId,
-        chef,
-        cleanup,
         rule_exceptions: ruleExceptions
       })
     }),

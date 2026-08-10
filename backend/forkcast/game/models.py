@@ -37,8 +37,12 @@ class Proposal(BaseModel):
     owners: list[str]
     voting_points: int
     supporters: list[str]
+    support_points: dict[str, int] = Field(default_factory=dict)
+    downvote_points: dict[str, int] = Field(default_factory=dict)
     downvotes: int = 0
     status: str = "ACTIVE"
+    chef_volunteers: list[str] = Field(default_factory=list)
+    cleanup_volunteers: list[str] = Field(default_factory=list)
 
 
 class PlayerSession(BaseModel):
@@ -47,6 +51,8 @@ class PlayerSession(BaseModel):
     meal_cards: list[str] = Field(default_factory=list)
     action_cards: list[str] = Field(default_factory=list)
     action_cards_played: list[str] = Field(default_factory=list)
+    cook_commitments: list[str] = Field(default_factory=list)
+    clean_commitments: list[str] = Field(default_factory=list)
     selected_meals: list[str] = Field(default_factory=list)
     placed: bool = False
 
@@ -76,14 +82,22 @@ class Session(BaseModel):
     proposals: dict[str, Proposal] = Field(default_factory=dict)
     week: dict[str, WeekEntry | None]
     rules: list[RuleStatus] = Field(default_factory=list)
+    turn_order: list[str] = Field(default_factory=list)
+    current_turn_index: int = 0
+    turn_log: list[str] = Field(default_factory=list)
     max_players: int = 4
     starting_voting_points: int = 10
     max_selected_meals: int = 3
+    max_action_cards_played: int = 2
 
 
 class JoinRequest(BaseModel):
     name: str
     avatar: str | None = None
+
+
+class CreateSessionRequest(BaseModel):
+    max_selected_meals: int = 3
 
 
 class MealSelectionRequest(BaseModel):
@@ -109,8 +123,20 @@ class VoteRequest(BaseModel):
 
 
 class LockDayRequest(BaseModel):
+    player_id: str | None = None
     day: str
     proposal_id: str
-    chef: list[str] = Field(default_factory=list)
-    cleanup: list[str] = Field(default_factory=list)
     rule_exceptions: list[str] = Field(default_factory=list)
+
+
+class PassTurnRequest(BaseModel):
+    player_id: str
+
+
+class CardPlayRequest(BaseModel):
+    player_id: str
+    card: str
+    proposal_id: str | None = None
+    day: str | None = None
+    target_day: str | None = None
+    meal_id: str | None = None

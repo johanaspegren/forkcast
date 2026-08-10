@@ -11,6 +11,7 @@ This first prototype includes:
 - Meal selection, secret placement, reveal, negotiation voting, day locking, and final week view
 - Prototype house-rule status for fish and minced-meat dinners
 - Development simulation mode with three random extra players
+- Turn-based negotiation with direct cook/clean commitments
 
 ## Run Locally
 
@@ -51,8 +52,19 @@ During the game, use **Simulate Next** to let simulated players complete the cur
 - In meal selection, they choose three random favourites.
 - In secret placement, they place meals and spend random Voting Points.
 - In reveal, the game advances to negotiation.
-- In negotiation, they cast a few random votes and lock a complete week.
+- In negotiation, the active simulated player takes a visible turn: vote, play a card, possibly lock a day, then pass.
 - In final vote, the simulator completes the Forkcast if house rules are satisfied.
+
+## Negotiation Turns and Chores
+
+Negotiation now has a current-player turn order. The active player can vote, commit to cook or clean directly on a proposal, lock a day, and then pass.
+
+Implemented prototype commitments:
+
+- **I'll Cook** toggles the player as chef for a proposal.
+- **I'll Clean** toggles the player for cleanup.
+
+For this prototype pass, every player has **I'll Cook** and **I'll Clean** available directly on meal proposals. These commitments do not grant Voting Points; they are already strategically useful because they help lock preferred meals. Wild Card, Roulette, and Swap are held back while the core negotiation loop is refined. A proposal can only be locked when it is leading its day and has both chef and cleanup volunteers.
 
 ## Prototype Notes
 

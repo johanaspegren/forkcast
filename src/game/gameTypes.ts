@@ -32,8 +32,12 @@ export type Proposal = {
   owners: string[];
   voting_points: number;
   supporters: string[];
+  support_points: Record<string, number>;
+  downvote_points: Record<string, number>;
   downvotes: number;
   status: "ACTIVE" | "LOCKED";
+  chef_volunteers: string[];
+  cleanup_volunteers: string[];
 };
 
 export type PlayerSession = {
@@ -42,6 +46,8 @@ export type PlayerSession = {
   meal_cards: string[];
   action_cards: string[];
   action_cards_played: string[];
+  cook_commitments: string[];
+  clean_commitments: string[];
   selected_meals: string[];
   placed: boolean;
 };
@@ -71,7 +77,11 @@ export type Session = {
   proposals: Record<string, Proposal>;
   week: Record<string, WeekEntry | null>;
   rules: RuleStatus[];
+  turn_order: string[];
+  current_turn_index: number;
+  turn_log: string[];
   max_players: number;
   starting_voting_points: number;
   max_selected_meals: number;
+  max_action_cards_played: number;
 };

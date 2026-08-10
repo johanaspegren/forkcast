@@ -3,9 +3,12 @@ from fastapi import APIRouter
 from backend.forkcast.api.websocket import manager
 from backend.forkcast.game.engine import engine
 from backend.forkcast.game.models import (
+    CardPlayRequest,
+    CreateSessionRequest,
     JoinRequest,
     LockDayRequest,
     MealSelectionRequest,
+    PassTurnRequest,
     PlacementRequest,
     Session,
     VoteRequest,
@@ -25,8 +28,8 @@ def meals() -> list[dict]:
 
 
 @router.post("/sessions")
-async def create_session() -> Session:
-    session = engine.create_session()
+async def create_session(request: CreateSessionRequest | None = None) -> Session:
+    session = engine.create_session(request)
     await manager.broadcast(session)
     return session
 
@@ -88,6 +91,20 @@ async def begin_negotiation(session_id: str) -> Session:
 @router.post("/sessions/{session_id}/vote")
 async def vote(session_id: str, request: VoteRequest) -> Session:
     session = engine.vote(session_id, request)
+    await manager.broadcast(session)
+    return session
+
+
+@router.post("/sessions/{session_id}/cards/play")
+async def play_card(session_id: str, request: CardPlayRequest) -> Session:
+    session = engine.play_card(session_id, request)
+    await manager.broadcast(session)
+    return session
+
+
+@router.post("/sessions/{session_id}/pass-turn")
+async def pass_turn(session_id: str, request: PassTurnRequest) -> Session:
+    session = engine.pass_turn(session_id, request)
     await manager.broadcast(session)
     return session
 

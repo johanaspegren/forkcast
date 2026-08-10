@@ -1,5 +1,6 @@
 import { Bot, Check, ChevronRight, CookingPot, FastForward, Minus, Plus, Sparkles, Users } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import QRCode from "qrcode";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { api } from "./api/rest";
 import { connectSessionSocket } from "./api/websocket";
@@ -15,10 +16,15 @@ export default function App() {
   const [playerId, setPlayerId] = useState(localStorage.getItem("forkcast.playerId") ?? "");
   const [name, setName] = useState("");
   const [joinCode, setJoinCode] = useState("");
+  const [mealSuggestionCount, setMealSuggestionCount] = useState(3);
   const [error, setError] = useState("");
 
   useEffect(() => {
     api.meals().then((value) => setMeals(value as Meal[])).catch((err) => setError(err.message));
+    const sessionId = new URLSearchParams(window.location.search).get("session");
+    if (sessionId) {
+      setJoinCode(sessionId);
+    }
   }, []);
 
   useEffect(() => {
@@ -30,6 +36,11 @@ export default function App() {
   const mealById = useMemo(() => Object.fromEntries(meals.map((meal) => [meal.id, meal])), [meals]);
   const currentPlayer = playerId ? session?.players[playerId] : undefined;
   const currentPlayerState = playerId ? session?.player_state[playerId] : undefined;
+  const currentTurnId = session?.turn_order.length
+    ? session.turn_order[session.current_turn_index % session.turn_order.length]
+    : "";
+  const currentTurnPlayer = currentTurnId && session ? session.players[currentTurnId] : undefined;
+  const canSimulateCurrentTurn = session?.phase !== "NEGOTIATION" || Boolean(currentTurnPlayer?.simulated);
 
   async function run(action: () => Promise<Session>) {
     setError("");
@@ -43,7 +54,7 @@ export default function App() {
   async function createAndJoin() {
     setError("");
     try {
-      const created = await api.createSession();
+      const created = await api.createSession(mealSuggestionCount);
       const joined = await api.join(created.id, name || "Johan");
       const id = Object.keys(joined.players).at(-1) ?? "";
       localStorage.setItem("forkcast.playerId", id);
@@ -57,7 +68,7 @@ export default function App() {
   async function createSimulation() {
     setError("");
     try {
-      const created = await api.createSession();
+      const created = await api.createSession(mealSuggestionCount);
       const joined = await api.join(created.id, name || "Johan");
       const id = Object.keys(joined.players).at(-1) ?? "";
       localStorage.setItem("forkcast.playerId", id);
@@ -97,6 +108,19 @@ export default function App() {
           <label>
             Your name
             <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Johan" />
+          </label>
+          <label>
+            Meal suggestions
+            <select
+              value={mealSuggestionCount}
+              onChange={(event) => setMealSuggestionCount(Number(event.target.value))}
+            >
+              {[2, 3, 4, 5].map((count) => (
+                <option key={count} value={count}>
+                  {count} meals per player
+                </option>
+              ))}
+            </select>
           </label>
           <button className="primary" onClick={createAndJoin}>
             <Plus size={18} /> Create Session
@@ -141,8 +165,12 @@ export default function App() {
       {error && <p className="error">{error}</p>}
 
       {session.players[playerId] && Object.values(session.players).some((player) => player.simulated) && (
-        <button className="simulation-button" onClick={() => run(() => api.simulateNext(session.id))}>
-          <FastForward size={16} /> Simulate Next
+        <button
+          className="simulation-button"
+          disabled={!canSimulateCurrentTurn}
+          onClick={() => run(() => api.simulateNext(session.id))}
+        >
+          <FastForward size={16} /> {session.phase === "NEGOTIATION" ? "Simulate Current Turn" : "Simulate Next"}
         </button>
       )}
 
@@ -154,22 +182,29 @@ export default function App() {
         />
       )}
 
-      {session.phase === "MEAL_SELECTION" && (
-        <MealSelection
-          meals={meals}
-          selected={currentPlayerState.selected_meals}
-          allowed={currentPlayerState.meal_cards}
-          max={session.max_selected_meals}
-          onSubmit={(mealIds) => run(() => api.selectMeals(session.id, playerId, mealIds))}
-        />
-      )}
-
-      {session.phase === "SECRET_PLACEMENT" && (
-        <Placement
+      {(session.phase === "MEAL_SELECTION" || session.phase === "SECRET_PLACEMENT") && (
+        <MealPlanning
           session={session}
+          allMeals={meals}
           meals={mealById}
           playerId={playerId}
-          onSubmit={(placements) => run(() => api.placeMeals(session.id, playerId, placements))}
+          onSubmit={(placements) =>
+            run(async () => {
+              let next = session;
+              const mealIds = placements.map((placement) => placement.meal_id);
+              const hasSimulatedPlayers = Object.values(session.players).some((player) => player.simulated);
+              if (session.phase === "MEAL_SELECTION") {
+                next = await api.selectMeals(session.id, playerId, mealIds);
+                if (next.phase === "MEAL_SELECTION" && hasSimulatedPlayers) {
+                  next = await api.simulateNext(session.id);
+                }
+              }
+              if (next.phase === "SECRET_PLACEMENT") {
+                next = await api.placeMeals(session.id, playerId, placements);
+              }
+              return next;
+            })
+          }
         />
       )}
 
@@ -188,7 +223,9 @@ export default function App() {
           meals={mealById}
           playerId={playerId}
           onVote={(proposalId, kind) => run(() => api.vote(session.id, playerId, proposalId, kind))}
-          onLock={(day, proposalId, chef, cleanup) => run(() => api.lockDay(session.id, day, proposalId, chef, cleanup))}
+          onPlayCard={(payload) => run(() => api.playCard(session.id, { player_id: playerId, ...payload }))}
+          onPass={() => run(() => api.passTurn(session.id, playerId))}
+          onLock={(day, proposalId) => run(() => api.lockDay(session.id, playerId, day, proposalId))}
           onComplete={() => run(() => api.complete(session.id))}
         />
       )}
@@ -209,11 +246,13 @@ function Lobby({
 }) {
   const hasRoom = Object.keys(session.players).length < session.max_players;
   const hasSimulatedPlayers = Object.values(session.players).some((player) => player.simulated);
+  const shareUrl = `${window.location.origin}/?session=${session.id}`;
 
   return (
     <section className="stage">
       <div className="join-code">{session.id}</div>
-      <p className="muted">Share this session ID with the other phones.</p>
+      <p className="muted">Share this session ID or scan the code from another phone.</p>
+      <QrShare value={shareUrl} />
       <div className="players-grid">
         {Object.values(session.players).map((player) => (
           <PlayerAvatar key={player.id} player={player} />
@@ -231,135 +270,202 @@ function Lobby({
   );
 }
 
-function MealSelection({
-  meals,
-  allowed,
-  selected,
-  max,
-  onSubmit
-}: {
-  meals: Meal[];
-  allowed: string[];
-  selected: string[];
-  max: number;
-  onSubmit: (mealIds: string[]) => void;
-}) {
-  const [choice, setChoice] = useState<string[]>(selected);
-  const options = meals.filter((meal) => allowed.includes(meal.id));
+function QrShare({ value }: { value: string }) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  function toggle(mealId: string) {
-    setChoice((current) => {
-      if (current.includes(mealId)) return current.filter((id) => id !== mealId);
-      if (current.length >= max) return current;
-      return [...current, mealId];
-    });
-  }
+  useEffect(() => {
+    if (!canvasRef.current) return;
+    QRCode.toCanvas(canvasRef.current, value, {
+      width: 176,
+      margin: 1,
+      color: {
+        dark: "#111617",
+        light: "#fff9ed"
+      }
+    }).catch(() => undefined);
+  }, [value]);
 
   return (
-    <section className="stage">
-      <h2>Choose {max} meal cards</h2>
-      <div className="meal-grid">
-        {options.map((meal) => (
-          <button
-            key={meal.id}
-            className={choice.includes(meal.id) ? "meal-card selected" : "meal-card"}
-            onClick={() => toggle(meal.id)}
-          >
-            <span className="meal-emoji">{meal.emoji}</span>
-            <strong>{meal.name}</strong>
-            <small>{meal.tags.join(" · ")}</small>
-          </button>
-        ))}
-      </div>
-      <button className="primary bottom-action" disabled={choice.length !== max} onClick={() => onSubmit(choice)}>
-        Lock Selection <Check size={18} />
-      </button>
-    </section>
+    <div className="qr-share">
+      <canvas ref={canvasRef} aria-label="Session QR code" />
+      <p>{value}</p>
+    </div>
   );
 }
 
-function Placement({
+function MealPlanning({
   session,
+  allMeals,
   meals,
   playerId,
   onSubmit
 }: {
   session: Session;
+  allMeals: Meal[];
   meals: Record<string, Meal>;
   playerId: string;
   onSubmit: (placements: Array<{ meal_id: string; day: string; points: number }>) => void;
 }) {
+  const player = session.players[playerId];
   const state = session.player_state[playerId];
-  const [placements, setPlacements] = useState(
-    state.selected_meals.map((mealId, index) => ({
-      meal_id: mealId,
-      day: session.days[index % session.days.length],
-      points: 0
-    }))
+  const [filter, setFilter] = useState<"favourites" | "asian" | "vego">("favourites");
+  const [pickedMealId, setPickedMealId] = useState("");
+  const [assigned, setAssigned] = useState<Record<string, string | null>>(() => {
+    const initial = Object.fromEntries(session.days.map((day, index) => [day, state.selected_meals[index] ?? null]));
+    return initial as Record<string, string | null>;
+  });
+  const [points, setPoints] = useState<Record<string, number>>(() =>
+    Object.fromEntries(session.days.map((day) => [day, 0])) as Record<string, number>
   );
 
-  const spent = placements.reduce((sum, item) => sum + item.points, 0);
+  const assignedMeals = Object.values(assigned).filter(Boolean);
+  const spent = Object.values(points).reduce((sum, value) => sum + value, 0);
+  const remaining = state.voting_points_remaining - spent;
+  const plannedCount = assignedMeals.length;
+
+  const filteredMeals = allMeals.filter((meal) => {
+    if (filter === "favourites") return player.favourite_meals.includes(meal.id);
+    if (filter === "asian") return meal.tags.includes("japanese") || meal.tags.includes("spiced");
+    return meal.protein_type === "vegetarian" || meal.tags.includes("vegetarian");
+  });
+
+  function assignMeal(day: string, mealId: string | null) {
+    setAssigned((current) => {
+      const next = { ...current };
+      const dayAlreadyFilled = Boolean(next[day]);
+      const assignedCount = Object.values(next).filter(Boolean).length;
+      if (mealId && !dayAlreadyFilled && assignedCount >= session.max_selected_meals) {
+        return next;
+      }
+      for (const existingDay of session.days) {
+        if (mealId && next[existingDay] === mealId) {
+          next[existingDay] = null;
+        }
+      }
+      next[day] = mealId;
+      return next;
+    });
+    setPickedMealId("");
+  }
+
+  function moveMeal(fromDay: string, toDay: string) {
+    setAssigned((current) => {
+      const movingMealId = current[fromDay];
+      const replacedMealId = current[toDay];
+      return { ...current, [fromDay]: replacedMealId, [toDay]: movingMealId };
+    });
+  }
+
+  function submit() {
+    const placements = session.days
+      .map((day) => assigned[day] ? { meal_id: assigned[day]!, day, points: points[day] ?? 0 } : null)
+      .filter((placement): placement is { meal_id: string; day: string; points: number } => Boolean(placement));
+    onSubmit(placements);
+  }
 
   return (
-    <section className="stage">
-      <h2>Place meals secretly</h2>
-      <p className="muted">{state.voting_points_remaining - spent} points left for placement.</p>
-      <div className="placement-list">
-        {placements.map((item, index) => (
-          <div className="placement-row" key={item.meal_id}>
-            <div>
-              <span className="meal-emoji small">{meals[item.meal_id]?.emoji}</span>
-              <strong>{meals[item.meal_id]?.name}</strong>
-            </div>
-            <select
-              value={item.day}
-              onChange={(event) =>
-                setPlacements((current) =>
-                  current.map((placement, placementIndex) =>
-                    placementIndex === index ? { ...placement, day: event.target.value } : placement
-                  )
-                )
-              }
-            >
-              {session.days.map((day) => (
-                <option key={day} value={day}>
-                  {titleCase(day)}
-                </option>
-              ))}
-            </select>
-            <div className="stepper">
-              <button
-                aria-label="Spend fewer points"
-                onClick={() =>
-                  setPlacements((current) =>
-                    current.map((placement, placementIndex) =>
-                      placementIndex === index ? { ...placement, points: Math.max(0, placement.points - 1) } : placement
-                    )
-                  )
-                }
-              >
-                <Minus size={16} />
-              </button>
-              <strong>{item.points}</strong>
-              <button
-                aria-label="Spend more points"
-                disabled={spent >= state.voting_points_remaining}
-                onClick={() =>
-                  setPlacements((current) =>
-                    current.map((placement, placementIndex) =>
-                      placementIndex === index ? { ...placement, points: placement.points + 1 } : placement
-                    )
-                  )
-                }
-              >
-                <Plus size={16} />
-              </button>
-            </div>
-          </div>
+    <section className="stage planning-stage">
+      <div className="planning-header">
+        <div>
+          <h2>Plan the week</h2>
+          <p className="muted">{plannedCount} / {session.max_selected_meals} suggestions set · {remaining} points left</p>
+        </div>
+      </div>
+      <div className="filter-tabs">
+        {(["favourites", "asian", "vego"] as const).map((option) => (
+          <button key={option} className={filter === option ? "filter-tab active" : "filter-tab"} onClick={() => setFilter(option)}>
+            {option === "favourites" ? "Favourites" : option === "asian" ? "Asian" : "Vego"}
+          </button>
         ))}
       </div>
-      <button className="primary bottom-action" disabled={state.placed} onClick={() => onSubmit(placements)}>
-        Submit Secret Placement <Check size={18} />
+      <div className="planning-grid">
+        <div className="meal-rail">
+          {filteredMeals.map((meal) => {
+            const isAssigned = assignedMeals.includes(meal.id);
+            return (
+              <button
+                key={meal.id}
+                className={pickedMealId === meal.id ? "rail-meal picked" : isAssigned ? "rail-meal assigned" : "rail-meal"}
+                draggable
+                onClick={() => setPickedMealId((current) => current === meal.id ? "" : meal.id)}
+                onDragStart={(event) => event.dataTransfer.setData("text/plain", `meal:${meal.id}`)}
+              >
+                <span>{meal.emoji}</span>
+                <strong>{meal.name}</strong>
+                <small>{meal.tags.join(" · ")}</small>
+              </button>
+            );
+          })}
+        </div>
+        <div className="weekday-dropzone">
+          {session.days.map((day) => {
+            const mealId = assigned[day];
+            const meal = mealId ? meals[mealId] : null;
+            return (
+              <div
+                key={day}
+                className={pickedMealId && (meal || plannedCount < session.max_selected_meals) ? "weekday-slot ready" : "weekday-slot"}
+                onClick={() => pickedMealId && assignMeal(day, pickedMealId)}
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  const data = event.dataTransfer.getData("text/plain");
+                  if (data.startsWith("meal:")) assignMeal(day, data.replace("meal:", ""));
+                  if (data.startsWith("day:")) moveMeal(data.replace("day:", ""), day);
+                }}
+              >
+                <div className="weekday-slot-head">
+                  <strong>{titleCase(day)}</strong>
+                  {meal && (
+                    <button aria-label={`Clear ${day}`} onClick={(event) => {
+                      event.stopPropagation();
+                      assignMeal(day, null);
+                    }}>
+                      <Minus size={14} />
+                    </button>
+                  )}
+                </div>
+                {meal ? (
+                  <div className="slot-meal" draggable onDragStart={(event) => event.dataTransfer.setData("text/plain", `day:${day}`)}>
+                    <span>{meal.emoji}</span>
+                    <div>
+                      <strong>{meal.name}</strong>
+                      <small>{meal.tags.join(" · ")}</small>
+                    </div>
+                  </div>
+                ) : (
+                  <p>{plannedCount >= session.max_selected_meals ? "Suggestion limit reached" : "Drop meal here"}</p>
+                )}
+                <div className="slot-points">
+                  <button
+                    aria-label={`Spend fewer points on ${day}`}
+                    disabled={(points[day] ?? 0) <= 0}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setPoints((current) => ({ ...current, [day]: Math.max(0, (current[day] ?? 0) - 1) }));
+                    }}
+                  >
+                    <Minus size={14} />
+                  </button>
+                  <strong>{points[day] ?? 0}</strong>
+                  <button
+                    aria-label={`Spend more points on ${day}`}
+                    disabled={!meal || remaining <= 0}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setPoints((current) => ({ ...current, [day]: (current[day] ?? 0) + 1 }));
+                    }}
+                  >
+                    <Plus size={14} />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      <button className="primary bottom-action" disabled={plannedCount !== session.max_selected_meals || remaining < 0 || state.placed} onClick={submit}>
+        Submit Suggestions <Check size={18} />
       </button>
     </section>
   );
@@ -397,18 +503,37 @@ function Board({
   meals,
   playerId,
   onVote,
+  onPlayCard,
+  onPass,
   onLock,
   onComplete
 }: {
   session: Session;
   meals: Record<string, Meal>;
   playerId: string;
-  onVote: (proposalId: string, kind: "support" | "downvote") => void;
-  onLock: (day: string, proposalId: string, chef: string[], cleanup: string[]) => void;
+  onVote: (proposalId: string, kind: "support" | "withdraw" | "downvote") => void;
+  onPlayCard: (payload: { card: string; proposal_id?: string; day?: string; target_day?: string; meal_id?: string }) => void;
+  onPass: () => void;
+  onLock: (day: string, proposalId: string) => void;
   onComplete: () => void;
 }) {
+  const currentTurnId = session.turn_order[session.current_turn_index % Math.max(1, session.turn_order.length)];
+  const currentTurnPlayer = currentTurnId ? session.players[currentTurnId] : undefined;
+  const isYourTurn = currentTurnId === playerId;
+
   return (
     <section className="stage">
+      {session.phase === "NEGOTIATION" && (
+        <div className={isYourTurn ? "turn-panel yours" : "turn-panel"}>
+          <div>
+            <span>Current Turn</span>
+            <strong>{currentTurnPlayer ? `${currentTurnPlayer.avatar} ${currentTurnPlayer.name}` : "Setting order"}</strong>
+          </div>
+          <button className="primary" disabled={!isYourTurn} onClick={onPass}>
+            Pass Turn <ChevronRight size={16} />
+          </button>
+        </div>
+      )}
       <div className="rules-strip">
         {session.rules.map((rule) => (
           <div key={rule.id} className={rule.satisfied ? "rule ok" : "rule warn"}>
@@ -425,11 +550,20 @@ function Board({
             session={session}
             meals={meals}
             playerId={playerId}
+            disabled={!isYourTurn || session.phase !== "NEGOTIATION"}
             onVote={onVote}
+            onPlayCard={onPlayCard}
             onLock={onLock}
           />
         ))}
       </div>
+      {session.turn_log.length > 0 && (
+        <div className="turn-log">
+          {session.turn_log.map((entry, index) => (
+            <p key={`${entry}-${index}`}>{entry}</p>
+          ))}
+        </div>
+      )}
       {session.phase === "FINAL_VOTE" && (
         <button className="primary bottom-action" onClick={onComplete}>
           Final Forkcast <Check size={18} />
@@ -444,20 +578,25 @@ function DayColumn({
   session,
   meals,
   playerId,
+  disabled,
   onVote,
+  onPlayCard,
   onLock
 }: {
   day: string;
   session: Session;
   meals: Record<string, Meal>;
   playerId: string;
-  onVote: (proposalId: string, kind: "support" | "downvote") => void;
-  onLock: (day: string, proposalId: string, chef: string[], cleanup: string[]) => void;
+  disabled: boolean;
+  onVote: (proposalId: string, kind: "support" | "withdraw" | "downvote") => void;
+  onPlayCard: (payload: { card: string; proposal_id?: string; day?: string; target_day?: string; meal_id?: string }) => void;
+  onLock: (day: string, proposalId: string) => void;
 }) {
   const proposals = Object.values(session.proposals)
     .filter((proposal) => proposal.day === day)
     .sort((a, b) => b.voting_points - a.voting_points);
   const locked = session.week[day];
+  const leaderId = proposals[0]?.id ?? "";
 
   return (
     <article className={locked ? "day locked" : "day"}>
@@ -480,8 +619,11 @@ function DayColumn({
             meal={meals[proposal.meal_id]}
             session={session}
             playerId={playerId}
+            disabled={disabled}
+            isLeader={proposal.id === leaderId}
             onVote={onVote}
-            onLock={(chef, cleanup) => onLock(day, proposal.id, chef, cleanup)}
+            onPlayCard={onPlayCard}
+            onLock={() => onLock(day, proposal.id)}
           />
         ))
       )}
@@ -520,18 +662,28 @@ function ProposalCard({
   meal,
   session,
   playerId,
+  disabled,
+  isLeader,
   onVote,
+  onPlayCard,
   onLock
 }: {
   proposal: Proposal;
   meal?: Meal;
   session: Session;
   playerId: string;
-  onVote: (proposalId: string, kind: "support" | "downvote") => void;
-  onLock: (chef: string[], cleanup: string[]) => void;
+  disabled: boolean;
+  isLeader: boolean;
+  onVote: (proposalId: string, kind: "support" | "withdraw" | "downvote") => void;
+  onPlayCard: (payload: { card: string; proposal_id?: string }) => void;
+  onLock: () => void;
 }) {
-  const [chef, setChef] = useState("");
-  const [cleanup, setCleanup] = useState("");
+  const mySupport = proposal.support_points[playerId] ?? 0;
+  const canLock = isLeader && proposal.chef_volunteers.length > 0 && proposal.cleanup_volunteers.length > 0;
+  const playerState = session.player_state[playerId];
+  const canPlayCard = !disabled;
+  const cookCommitted = proposal.chef_volunteers.includes(playerId);
+  const cleanCommitted = proposal.cleanup_volunteers.includes(playerId);
 
   return (
     <div className="proposal-card">
@@ -539,37 +691,50 @@ function ProposalCard({
         <span className="meal-emoji">{meal?.emoji}</span>
         <div>
           <strong>{meal?.name}</strong>
-          <small>{proposal.owners.map((id) => session.players[id]?.name).join(" + ")}</small>
+          <small>{proposal.owners.map((id) => session.players[id]?.name).join(" + ")} · You: {mySupport}</small>
         </div>
-        <b>{proposal.voting_points}</b>
       </div>
       <div className="proposal-actions">
-        <button aria-label="Support proposal" onClick={() => onVote(proposal.id, "support")}>
-          <Plus size={16} /> Support
+        <button
+          disabled={disabled}
+          aria-label={mySupport > 0 ? "Withdraw vote" : "Downvote proposal"}
+          title={mySupport > 0 ? "Withdraw one of your votes" : "Downvote costs 3 Voting Points"}
+          onClick={() => onVote(proposal.id, mySupport > 0 ? "withdraw" : "downvote")}
+        >
+          <Minus size={16} />
         </button>
-        <button aria-label="Downvote proposal" onClick={() => onVote(proposal.id, "downvote")}>
-          <Minus size={16} /> Downvote
+        <strong className="proposal-score">{proposal.voting_points}</strong>
+        <button disabled={disabled} aria-label="Support proposal" onClick={() => onVote(proposal.id, "support")}>
+          <Plus size={16} />
         </button>
       </div>
+      <div className="chore-actions">
+        <button
+          className={cookCommitted ? "chore-button active" : "chore-button"}
+          disabled={!canPlayCard}
+          aria-pressed={cookCommitted}
+          onClick={() => onPlayCard({ card: "ILL_COOK", proposal_id: proposal.id })}
+        >
+          {cookCommitted ? "Un-cook" : "Cook"}
+        </button>
+        <button
+          className={cleanCommitted ? "chore-button active" : "chore-button"}
+          disabled={!canPlayCard}
+          aria-pressed={cleanCommitted}
+          onClick={() => onPlayCard({ card: "ILL_CLEAN", proposal_id: proposal.id })}
+        >
+          {cleanCommitted ? "Un-clean" : "Clean"}
+        </button>
+      </div>
+      {(proposal.chef_volunteers.length > 0 || proposal.cleanup_volunteers.length > 0) && (
+        <div className="volunteer-line">
+          {proposal.chef_volunteers.length > 0 && <span>Chef: {proposal.chef_volunteers.map((id) => session.players[id]?.name).join(", ")}</span>}
+          {proposal.cleanup_volunteers.length > 0 && <span>Cleanup: {proposal.cleanup_volunteers.map((id) => session.players[id]?.name).join(", ")}</span>}
+        </div>
+      )}
       <div className="lock-row">
-        <select value={chef} onChange={(event) => setChef(event.target.value)}>
-          <option value="">Chef</option>
-          {Object.values(session.players).map((player) => (
-            <option key={player.id} value={player.id}>
-              {player.name}
-            </option>
-          ))}
-        </select>
-        <select value={cleanup} onChange={(event) => setCleanup(event.target.value)}>
-          <option value="">Cleanup</option>
-          {Object.values(session.players).map((player) => (
-            <option key={player.id} value={player.id}>
-              {player.name}
-            </option>
-          ))}
-        </select>
-        <button className="lock-button" disabled={!chef} onClick={() => onLock([chef], cleanup ? [cleanup] : [])}>
-          Lock
+        <button className="lock-button" disabled={disabled || !canLock} onClick={onLock}>
+          {canLock ? "Lock" : isLeader ? "Needs chores" : "Not leading"}
         </button>
       </div>
     </div>
