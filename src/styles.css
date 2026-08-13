@@ -685,6 +685,16 @@ h3 {
   border-color: rgba(255, 49, 94, 0.76);
 }
 
+.weekday-slot.ready::after {
+  content: "Tap to place";
+  justify-self: end;
+  align-self: end;
+  color: rgba(14, 33, 93, 0.6);
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
 .weekday-slot p {
   margin: 0;
   color: #7a8781;
@@ -722,6 +732,36 @@ h3 {
   touch-action: manipulation;
   -webkit-touch-callout: none;
   user-select: none;
+}
+
+.touch-drag-preview {
+  position: fixed;
+  z-index: 5000;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  display: grid;
+  grid-template-columns: 34px max-content;
+  align-items: center;
+  gap: 8px;
+  max-width: 220px;
+  padding: 10px 14px;
+  border-radius: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.86);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0) 42%),
+    linear-gradient(180deg, #fff0fa, #ffd5df);
+  color: var(--game-ink);
+  box-shadow: 0 8px 0 rgba(63, 24, 124, 0.22);
+}
+
+.touch-drag-preview span {
+  font-size: 1.6rem;
+}
+
+.touch-drag-preview strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .slot-meal.picked {
@@ -1606,10 +1646,19 @@ h3 {
   outline-offset: -8px;
 }
 
+.final-day.picked {
+  outline: 4px solid rgba(255, 49, 94, 0.58);
+  outline-offset: -8px;
+}
+
 .final-day.swap-target {
   outline: 4px solid rgba(255, 49, 94, 0.58);
   outline-offset: -8px;
   box-shadow: inset 0 0 0 4px rgba(255, 255, 255, 0.38), 0 10px 0 rgba(159, 18, 58, 0.18);
+}
+
+.final-touch-preview {
+  grid-template-columns: 34px max-content;
 }
 
 .final-day.swap-source {

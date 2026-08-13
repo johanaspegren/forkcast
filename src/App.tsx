@@ -1281,6 +1281,14 @@ function MealPlanning({
   const [filter, setFilter] = useState<"favourites" | "asian" | "vego">("favourites");
   const [pickedMealId, setPickedMealId] = useState("");
   const [pickedFromDay, setPickedFromDay] = useState<string | null>(null);
+  const [touchDrag, setTouchDrag] = useState<{
+    mealId: string;
+    fromDay: string | null;
+    x: number;
+    y: number;
+    active: boolean;
+  } | null>(null);
+  const touchDragStartRef = useRef<{ x: number; y: number } | null>(null);
   const [canDrag] = useState(() => window.matchMedia("(pointer: fine)").matches);
   const [assigned, setAssigned] = useState<Record<string, string | null>>(() => {
     const initial = Object.fromEntries(session.days.map((day, index) => [day, state.selected_meals[index] ?? null]));
@@ -1355,6 +1363,56 @@ function MealPlanning({
     assignMeal(day, pickedMealId);
   }
 
+  function dropTouchMeal(day: string, mealId: string, fromDay: string | null) {
+    if (fromDay) {
+      if (fromDay !== day) moveMeal(fromDay, day);
+      return;
+    }
+    assignMeal(day, mealId);
+  }
+
+  function finishTouchDrag(clientX: number, clientY: number) {
+    if (!touchDrag) return;
+    const target = document.elementFromPoint(clientX, clientY)?.closest<HTMLElement>("[data-weekday-slot]");
+    const day = target?.dataset.weekdaySlot;
+    if (day) {
+      dropTouchMeal(day, touchDrag.mealId, touchDrag.fromDay);
+    }
+    setTouchDrag(null);
+    touchDragStartRef.current = null;
+  }
+
+  function startTouchDrag(event: React.PointerEvent, mealId: string, fromDay: string | null) {
+    if (event.pointerType === "mouse") return;
+    touchDragStartRef.current = { x: event.clientX, y: event.clientY };
+    setTouchDrag({ mealId, fromDay, x: event.clientX, y: event.clientY, active: false });
+  }
+
+  function moveTouchDrag(event: React.PointerEvent) {
+    if (!touchDrag) return;
+    const start = touchDragStartRef.current;
+    const movedEnough = start
+      ? Math.abs(event.clientX - start.x) + Math.abs(event.clientY - start.y) > 10
+      : true;
+    if (movedEnough) {
+      event.preventDefault();
+    }
+    setTouchDrag((current) => current
+      ? { ...current, x: event.clientX, y: event.clientY, active: current.active || movedEnough }
+      : null);
+  }
+
+  function endTouchDrag(event: React.PointerEvent) {
+    if (!touchDrag) return;
+    if (touchDrag.active) {
+      event.preventDefault();
+      finishTouchDrag(event.clientX, event.clientY);
+      return;
+    }
+    setTouchDrag(null);
+    touchDragStartRef.current = null;
+  }
+
   function submit() {
     const placements = session.days
       .map((day) => assigned[day] ? { meal_id: assigned[day]!, day, points: points[day] ?? 0 } : null)
@@ -1389,6 +1447,10 @@ function MealPlanning({
                 draggable={canDrag}
                 onClick={() => pickFromRail(meal.id)}
                 onDragStart={(event) => event.dataTransfer.setData("text/plain", `meal:${meal.id}`)}
+                onPointerDown={(event) => startTouchDrag(event, meal.id, null)}
+                onPointerMove={moveTouchDrag}
+                onPointerUp={endTouchDrag}
+                onPointerCancel={endTouchDrag}
               >
                 <span>{meal.emoji}</span>
                 <strong>{meal.name}</strong>
@@ -1405,6 +1467,7 @@ function MealPlanning({
               <div
                 key={day}
                 className={pickedMealId && (meal || plannedCount < session.max_selected_meals) ? "weekday-slot ready" : "weekday-slot"}
+                data-weekday-slot={day}
                 onClick={() => placeOnDay(day)}
                 onDragOver={(event) => event.preventDefault()}
                 onDrop={(event) => {
@@ -1430,6 +1493,10 @@ function MealPlanning({
                     className={pickedMealId === mealId && pickedFromDay === day ? "slot-meal picked" : "slot-meal"}
                     draggable={canDrag}
                     onDragStart={(event) => event.dataTransfer.setData("text/plain", `day:${day}`)}
+                    onPointerDown={(event) => startTouchDrag(event, mealId!, day)}
+                    onPointerMove={moveTouchDrag}
+                    onPointerUp={endTouchDrag}
+                    onPointerCancel={endTouchDrag}
                     onClick={(event) => {
                       event.stopPropagation();
                       pickAssigned(day, mealId!);
@@ -1475,6 +1542,15 @@ function MealPlanning({
       <button className="primary bottom-action" disabled={plannedCount !== session.max_selected_meals || remaining < 0 || state.placed} onClick={submit}>
         Submit Suggestions <Check size={18} />
       </button>
+      {touchDrag?.active && (
+        <div
+          className="touch-drag-preview"
+          style={{ left: touchDrag.x, top: touchDrag.y }}
+        >
+          <span>{meals[touchDrag.mealId]?.emoji ?? "?"}</span>
+          <strong>{meals[touchDrag.mealId]?.name ?? "Meal"}</strong>
+        </div>
+      )}
     </section>
   );
 }
@@ -2002,6 +2078,9 @@ function FinalForkcast({
   const canReorder = playerId === adminId;
   const [draggingDay, setDraggingDay] = useState("");
   const [dragOverDay, setDragOverDay] = useState("");
+  const [pickedReorderDay, setPickedReorderDay] = useState("");
+  const [touchReorder, setTouchReorder] = useState<{ sourceDay: string; x: number; y: number; active: boolean } | null>(null);
+  const touchReorderStartRef = useRef<{ x: number; y: number } | null>(null);
   const [saved, setSaved] = useState(() => {
     const savedWeeks = JSON.parse(localStorage.getItem(SAVED_WEEKS_KEY) ?? "{}") as Record<string, { session_id?: string }>;
     return savedWeeks[savedWeekId]?.session_id === session.id;
@@ -2109,12 +2188,64 @@ function FinalForkcast({
     if (!canReorder || !sourceDay || sourceDay === day) {
       setDraggingDay("");
       setDragOverDay("");
+      setPickedReorderDay("");
       return;
     }
     setSaved(false);
     onReorder(sourceDay, day);
     setDraggingDay("");
     setDragOverDay("");
+    setPickedReorderDay("");
+  }
+
+  function tapReorderDay(day: string) {
+    if (!canReorder) return;
+    if (!pickedReorderDay) {
+      setPickedReorderDay(day);
+      return;
+    }
+    dropOnDay(day, pickedReorderDay);
+  }
+
+  function startFinalTouchReorder(event: React.PointerEvent, day: string) {
+    if (!canReorder || event.pointerType === "mouse") return;
+    touchReorderStartRef.current = { x: event.clientX, y: event.clientY };
+    setTouchReorder({ sourceDay: day, x: event.clientX, y: event.clientY, active: false });
+  }
+
+  function moveFinalTouchReorder(event: React.PointerEvent) {
+    if (!touchReorder) return;
+    const start = touchReorderStartRef.current;
+    const movedEnough = start
+      ? Math.abs(event.clientX - start.x) + Math.abs(event.clientY - start.y) > 12
+      : true;
+    if (movedEnough) {
+      event.preventDefault();
+      setDraggingDay(touchReorder.sourceDay);
+      const target = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>("[data-final-day]");
+      const day = target?.dataset.finalDay ?? "";
+      setDragOverDay(day && day !== touchReorder.sourceDay ? day : "");
+    }
+    setTouchReorder((current) => current
+      ? { ...current, x: event.clientX, y: event.clientY, active: current.active || movedEnough }
+      : null);
+  }
+
+  function endFinalTouchReorder(event: React.PointerEvent) {
+    if (!touchReorder) return;
+    if (touchReorder.active) {
+      event.preventDefault();
+      const target = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>("[data-final-day]");
+      const day = target?.dataset.finalDay ?? "";
+      if (day) {
+        dropOnDay(day, touchReorder.sourceDay);
+      } else {
+        setDraggingDay("");
+        setDragOverDay("");
+      }
+    }
+    setTouchReorder(null);
+    touchReorderStartRef.current = null;
   }
 
   return (
@@ -2152,7 +2283,7 @@ function FinalForkcast({
           ))}
         </div>
       )}
-      {canReorder && <p className="final-reorder-hint">Drag a meal onto another day to swap them before saving.</p>}
+      {canReorder && <p className="final-reorder-hint">Drag a meal onto another day, or tap one day and then another, to swap before saving.</p>}
       <div className="day-stack final-week-stack">
         {session.days.map((day) => {
           const entry = previewWeek[day];
@@ -2168,12 +2299,15 @@ function FinalForkcast({
                   "day locked final-day rush-day",
                   `rush-day-${day}`,
                   draggingDay === day ? "dragging" : "",
+                  pickedReorderDay === day ? "picked" : "",
                   isPreviewTarget ? "swap-target" : "",
                   isPreviewSource ? "swap-source" : ""
                 ].filter(Boolean).join(" ")
               }
+              data-final-day={day}
               draggable={canReorder}
               key={day}
+              onClick={() => tapReorderDay(day)}
               onDragStart={(event) => {
                 setDraggingDay(day);
                 event.dataTransfer.effectAllowed = "move";
@@ -2199,6 +2333,10 @@ function FinalForkcast({
                 event.preventDefault();
                 dropOnDay(day, event.dataTransfer.getData("text/plain") || draggingDay);
               }}
+              onPointerDown={(event) => startFinalTouchReorder(event, day)}
+              onPointerMove={moveFinalTouchReorder}
+              onPointerUp={endFinalTouchReorder}
+              onPointerCancel={endFinalTouchReorder}
             >
               <h3>{titleCase(day)}</h3>
               <div className="locked-meal final-locked-meal">
@@ -2234,6 +2372,12 @@ function FinalForkcast({
           );
         })}
       </div>
+      {touchReorder?.active && (
+        <div className="touch-drag-preview final-touch-preview" style={{ left: touchReorder.x, top: touchReorder.y }}>
+          <span>{meals[session.week[touchReorder.sourceDay]?.meal_id ?? ""]?.emoji ?? "?"}</span>
+          <strong>{titleCase(touchReorder.sourceDay)}</strong>
+        </div>
+      )}
     </section>
   );
 }
