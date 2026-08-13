@@ -77,7 +77,7 @@ http://localhost:5173/display?mock=1
 On a Raspberry Pi server, use:
 
 ```text
-http://<raspberry-pi-ip>:8000/display?session=<session-id>
+http://<raspberry-pi-ip>:<selected-port>/display?session=<session-id>
 ```
 
 The display updates through the session WebSocket and rotates between Classic Dining, Art Deco, and Burger Shack menu styles.
@@ -85,6 +85,8 @@ The display updates through the session WebSocket and rotates between Classic Di
 ## Raspberry Pi Home Server
 
 Yes, Forkcast can run on a Raspberry Pi as a LAN server. A Raspberry Pi 4 or 5 is a good target.
+
+Use a current Node.js release that can run Vite 7; Node 20+ is a safe choice.
 
 Install system dependencies:
 
@@ -109,7 +111,9 @@ npm run build
 npm run serve
 ```
 
-If your preferred backend port is busy on the Pi, `npm run serve` automatically falls forward to a free one. To choose the starting preference:
+If your preferred backend port is busy on the Pi, `npm run serve` automatically falls forward to a free one. The frontend dev server does the same for port 5173 when you run `npm run dev`.
+
+To choose the starting preference:
 
 ```bash
 BACKEND_PORT=8010 npm run serve
@@ -118,36 +122,24 @@ BACKEND_PORT=8010 npm run serve
 Open from phones on the same Wi-Fi:
 
 ```text
-http://<raspberry-pi-ip>:8010
+http://<raspberry-pi-ip>:<selected-port>
 ```
 
 Optional systemd service:
 
-Replace `/home/pi/dev/forkcast` with the path where you cloned the repo on the Pi, and replace `8010` with any free port you want to use:
+Copy the provided unit file to systemd, then edit `User` and `WorkingDirectory` if your Pi uses different values:
 
 ```bash
-sudo tee /etc/systemd/system/forkcast.service >/dev/null <<'EOF'
-[Unit]
-Description=Forkcast
-After=network-online.target
-
-[Service]
-User=pi
-WorkingDirectory=/home/pi/dev/forkcast
-ExecStart=/home/pi/dev/forkcast/.venv/bin/python -m uvicorn backend.forkcast.main:app --host 0.0.0.0 --port 8010
-Restart=always
-
-[Install]
-WantedBy=multi-user.target
-EOF
+sudo cp deploy/forkcast.service /etc/systemd/system/forkcast.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now forkcast.service
+sudo systemctl status forkcast.service
 ```
 
 Then run:
 
 ```bash
-sudo systemctl daemon-reload
-sudo systemctl enable --now forkcast.service
-sudo systemctl status forkcast.service
+sudo journalctl -u forkcast.service -f
 ```
 
 ## Simulation Mode

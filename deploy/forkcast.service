@@ -1,0 +1,17 @@
+[Unit]
+Description=Forkcast
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/dev/forkcast-2
+Environment=NODE_ENV=production
+Environment=PATH=/usr/bin:/bin:/usr/local/bin
+ExecStart=/usr/bin/npm run serve
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
