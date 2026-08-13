@@ -6,6 +6,7 @@ from backend.forkcast.game.engine import engine
 from backend.forkcast.game.models import (
     CardPlayRequest,
     CreateSessionRequest,
+    DeleteSessionRequest,
     GeneralAssemblyRequest,
     JoinRequest,
     LockDayRequest,
@@ -63,9 +64,21 @@ async def create_session(request: CreateSessionRequest | None = None) -> Session
     return session
 
 
+@router.get("/sessions")
+def active_sessions() -> list[Session]:
+    return [session for session in engine.sessions.values() if session.phase != "COMPLETE"]
+
+
 @router.get("/sessions/{session_id}")
 def get_session(session_id: str) -> Session:
     return engine.get_session(session_id)
+
+
+@router.delete("/sessions/{session_id}")
+async def delete_session(session_id: str, request: DeleteSessionRequest | None = None) -> dict[str, str]:
+    engine.delete_session(session_id, request)
+    await manager.broadcast_deleted(session_id)
+    return {"status": "deleted"}
 
 
 @router.post("/sessions/{session_id}/join")

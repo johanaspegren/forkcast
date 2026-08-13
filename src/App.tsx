@@ -472,6 +472,7 @@ export default function App() {
   const [joinCode, setJoinCode] = useState("");
   const [mealSuggestionCount, setMealSuggestionCount] = useState(3);
   const [gameMode, setGameMode] = useState<GameMode>("CLASSIC_DRAFT");
+  const [activeSessions, setActiveSessions] = useState<Session[]>([]);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -493,13 +494,41 @@ export default function App() {
 
   useEffect(() => {
     if (!session?.id || session.id === MOCK_WEEKLY_SESSION.id) return;
-    const socket = connectSessionSocket(session.id, setSession);
+    const socket = connectSessionSocket(session.id, setSession, () => {
+      setSession(null);
+      setPlayerId("");
+      localStorage.removeItem("forkcast.playerId");
+      setError("Session was deleted.");
+    });
     return () => socket.close();
   }, [session?.id]);
 
   useEffect(() => {
     localStorage.setItem(PLAYER_PROFILE_KEY, JSON.stringify(profile));
   }, [profile]);
+
+  useEffect(() => {
+    if (isDisplayMode || session) return;
+    let cancelled = false;
+    const refreshActiveSessions = () => {
+      api.activeSessions()
+        .then((sessions) => {
+          if (!cancelled) setActiveSessions(sessions);
+        })
+        .catch(() => undefined);
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") refreshActiveSessions();
+    };
+    refreshActiveSessions();
+    const timer = window.setInterval(refreshActiveSessions, 2500);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [isDisplayMode, session]);
 
   const mealById = useMemo(() => Object.fromEntries(meals.map((meal) => [meal.id, meal])), [meals]);
   const currentPlayer = playerId ? session?.players[playerId] : undefined;
@@ -508,6 +537,8 @@ export default function App() {
     ? session.turn_order[session.current_turn_index % session.turn_order.length]
     : "";
   const currentTurnPlayer = currentTurnId && session ? session.players[currentTurnId] : undefined;
+  const adminId = session ? Object.keys(session.players)[0] ?? "" : "";
+  const isAdmin = Boolean(playerId && playerId === adminId);
   const canSimulateCurrentTurn =
     session?.phase === "REALTIME_RUSH" || session?.phase !== "NEGOTIATION" || Boolean(currentTurnPlayer?.simulated);
 
@@ -566,7 +597,10 @@ export default function App() {
 
   async function joinExisting() {
     if (!joinCode.trim()) return;
-    const code = joinCode.trim();
+    await joinSessionById(joinCode.trim());
+  }
+
+  async function joinSessionById(code: string) {
     await run(async () => {
       const existing = await api.getSession(code);
       const joined = await api.join(existing.id, profile.name || `Player ${Object.keys(existing.players).length + 1}`, profile.avatar);
@@ -575,6 +609,21 @@ export default function App() {
       setPlayerId(id);
       return joined;
     });
+  }
+
+  async function deleteSession(sessionIdToDelete: string, deletingPlayerId = playerId) {
+    setError("");
+    try {
+      await api.deleteSession(sessionIdToDelete, deletingPlayerId);
+      setActiveSessions((sessions) => sessions.filter((activeSession) => activeSession.id !== sessionIdToDelete));
+      if (session?.id === sessionIdToDelete) {
+        setSession(null);
+        setPlayerId("");
+        localStorage.removeItem("forkcast.playerId");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not delete session");
+    }
   }
 
   if (!session || !currentPlayer || !currentPlayerState) {
@@ -649,6 +698,34 @@ export default function App() {
             Session ID
             <input value={joinCode} onChange={(event) => setJoinCode(event.target.value)} placeholder="8 character id" />
           </label>
+          {activeSessions.length > 0 && (
+            <div className="active-session-list">
+              <p className="eyebrow">Active session</p>
+              {activeSessions.map((activeSession) => (
+                <div className="active-session-row" key={activeSession.id}>
+                  <button
+                    className="active-session-button"
+                    onClick={() => joinSessionById(activeSession.id)}
+                    type="button"
+                  >
+                    <span>{activeSession.join_code}</span>
+                    <strong>{activeSession.phase.replace("_", " ")}</strong>
+                    <small>{Object.keys(activeSession.players).length}/{activeSession.max_players} players · {activeSession.game_mode === "REALTIME_RUSH" ? "Rush" : "Classic"}</small>
+                  </button>
+                  {Object.keys(activeSession.players).length === 0 && (
+                    <button
+                      aria-label={`Delete ${activeSession.join_code}`}
+                      className="delete-session-button"
+                      onClick={() => deleteSession(activeSession.id, "")}
+                      type="button"
+                    >
+                      Delete
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
           <button onClick={joinExisting}>
             <Users size={18} /> Join Session
           </button>
@@ -668,8 +745,14 @@ export default function App() {
           <p className="eyebrow">{session.join_code}</p>
           <h1>Forkcast</h1>
         </div>
-        <VotingPoints state={currentPlayerState} />
+        {session.phase !== "COMPLETE" && <VotingPoints state={currentPlayerState} />}
       </header>
+
+      {isAdmin && (
+        <button className="delete-current-session" onClick={() => deleteSession(session.id, playerId)} type="button">
+          Delete Session
+        </button>
+      )}
 
       <div className="phase-track">
         <span>{session.phase.replace("_", " ")}</span>
@@ -1915,6 +1998,7 @@ function FinalForkcast({
   const adminId = Object.keys(session.players)[0] ?? "";
   const canReorder = playerId === adminId;
   const [draggingDay, setDraggingDay] = useState("");
+  const [dragOverDay, setDragOverDay] = useState("");
   const [saved, setSaved] = useState(() => {
     const savedWeeks = JSON.parse(localStorage.getItem(SAVED_WEEKS_KEY) ?? "{}") as Record<string, { session_id?: string }>;
     return savedWeeks[savedWeekId]?.session_id === session.id;
@@ -1991,10 +2075,19 @@ function FinalForkcast({
     return `${session.players[playerId]?.name ?? playerId} ${proposal.support_points[playerId] ?? 0}`;
   }
 
+  const previewWeek = useMemo(() => {
+    if (!draggingDay || !dragOverDay || draggingDay === dragOverDay) return session.week;
+    return {
+      ...session.week,
+      [draggingDay]: session.week[dragOverDay],
+      [dragOverDay]: session.week[draggingDay]
+    };
+  }, [dragOverDay, draggingDay, session.week]);
+
   const heartRankByDay = Object.fromEntries(
     session.days
       .map((day) => {
-        const entry = session.week[day];
+        const entry = previewWeek[day];
         return { day, hearts: entry ? heartsForDay(day, entry.meal_id) : 0 };
       })
       .sort((a, b) => b.hearts - a.hearts)
@@ -2012,11 +2105,13 @@ function FinalForkcast({
   function dropOnDay(day: string, sourceDay = draggingDay) {
     if (!canReorder || !sourceDay || sourceDay === day) {
       setDraggingDay("");
+      setDragOverDay("");
       return;
     }
     setSaved(false);
     onReorder(sourceDay, day);
     setDraggingDay("");
+    setDragOverDay("");
   }
 
   return (
@@ -2052,16 +2147,22 @@ function FinalForkcast({
       {canReorder && <p className="final-reorder-hint">Drag a meal onto another day to swap them before saving.</p>}
       <div className="day-stack final-week-stack">
         {session.days.map((day) => {
-          const entry = session.week[day];
+          const entry = previewWeek[day];
           if (!entry) return null;
           const hearts = heartsForDay(day, entry.meal_id);
           const proposal = proposalForEntry(day, entry.meal_id);
+          const isPreviewTarget = Boolean(draggingDay && dragOverDay === day && draggingDay !== day);
+          const isPreviewSource = Boolean(dragOverDay && draggingDay === day && dragOverDay !== day);
           return (
             <article
               className={
-                draggingDay === day
-                  ? `day locked final-day rush-day rush-day-${day} dragging`
-                  : `day locked final-day rush-day rush-day-${day}`
+                [
+                  "day locked final-day rush-day",
+                  `rush-day-${day}`,
+                  draggingDay === day ? "dragging" : "",
+                  isPreviewTarget ? "swap-target" : "",
+                  isPreviewSource ? "swap-source" : ""
+                ].filter(Boolean).join(" ")
               }
               draggable={canReorder}
               key={day}
@@ -2070,9 +2171,21 @@ function FinalForkcast({
                 event.dataTransfer.effectAllowed = "move";
                 event.dataTransfer.setData("text/plain", day);
               }}
-              onDragEnd={() => setDraggingDay("")}
+              onDragEnd={() => {
+                setDraggingDay("");
+                setDragOverDay("");
+              }}
               onDragOver={(event) => {
-                if (canReorder) event.preventDefault();
+                if (!canReorder) return;
+                event.preventDefault();
+                if (draggingDay && draggingDay !== day) {
+                  setDragOverDay(day);
+                }
+              }}
+              onDragLeave={(event) => {
+                if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                  setDragOverDay((current) => (current === day ? "" : current));
+                }
               }}
               onDrop={(event) => {
                 event.preventDefault();

@@ -187,6 +187,10 @@ class ReorderWeekRequest(BaseModel):
     to_day: str
 
 
+class DeleteSessionRequest(BaseModel):
+    player_id: str | None = None
+
+
 class CardPlayRequest(BaseModel):
     player_id: str
     card: str

@@ -1,6 +1,10 @@
 import type { Session } from "../game/gameTypes";
 
-export function connectSessionSocket(sessionId: string, onSession: (session: Session) => void): WebSocket {
+export function connectSessionSocket(
+  sessionId: string,
+  onSession: (session: Session) => void,
+  onDeleted?: () => void
+): WebSocket {
   const protocol = window.location.protocol === "https:" ? "wss" : "ws";
   const socket = new WebSocket(`${protocol}://${window.location.host}/ws/sessions/${sessionId}`);
   socket.addEventListener("message", (event) => {
@@ -8,7 +12,9 @@ export function connectSessionSocket(sessionId: string, onSession: (session: Ses
     if (payload.event === "SESSION_UPDATED") {
       onSession(payload.session);
     }
+    if (payload.event === "SESSION_DELETED") {
+      onDeleted?.();
+    }
   });
   return socket;
 }
-

@@ -27,6 +27,16 @@ class ConnectionManager:
         for websocket in stale:
             self.disconnect(session.id, websocket)
 
+    async def broadcast_deleted(self, session_id: str) -> None:
+        stale: list[WebSocket] = []
+        for websocket in self.connections[session_id]:
+            try:
+                await websocket.send_json({"event": "SESSION_DELETED", "session_id": session_id})
+            except RuntimeError:
+                stale.append(websocket)
+        for websocket in stale:
+            self.disconnect(session_id, websocket)
+        self.connections.pop(session_id, None)
+
 
 manager = ConnectionManager()
-

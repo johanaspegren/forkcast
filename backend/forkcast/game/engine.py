@@ -9,6 +9,7 @@ from fastapi import HTTPException
 from .models import (
     CardPlayRequest,
     CreateSessionRequest,
+    DeleteSessionRequest,
     GamePhase,
     GameMode,
     GeneralAssemblyRequest,
@@ -91,6 +92,16 @@ class GameEngine:
         if not session:
             raise HTTPException(status_code=404, detail="Session not found")
         return self._refresh_rules(session)
+
+    def delete_session(self, session_id: str, request: DeleteSessionRequest | None = None) -> None:
+        session = self.sessions.get(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        admin_id = next(iter(session.players), None)
+        requested_player_id = request.player_id if request else None
+        if admin_id and requested_player_id != admin_id:
+            raise HTTPException(status_code=403, detail="Only the session admin can delete this session")
+        self.sessions.pop(session_id, None)
 
     def all_meals(self) -> list[Meal]:
         return list(MEALS.values())

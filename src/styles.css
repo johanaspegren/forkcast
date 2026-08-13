@@ -166,6 +166,79 @@ label {
   box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.62), 0 4px 0 rgba(120, 62, 0, 0.3), 0 0 0 3px rgba(255, 255, 255, 0.48);
 }
 
+.active-session-list {
+  display: grid;
+  gap: 8px;
+}
+
+.active-session-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.active-session-button {
+  min-height: 68px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 2px 10px;
+  padding: 10px 12px;
+  text-align: left;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.58), rgba(255, 255, 255, 0) 42%),
+    linear-gradient(180deg, #35d6ff, #46d769);
+  color: var(--game-ink);
+  border: 2px solid rgba(255, 255, 255, 0.72);
+}
+
+.delete-session-button,
+.delete-current-session {
+  min-height: 44px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.54), rgba(255, 255, 255, 0) 42%),
+    linear-gradient(180deg, #ff8aa8, #ff315e);
+  color: #fff;
+  text-shadow: 0 2px 0 rgba(106, 8, 48, 0.38);
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.56), 0 4px 0 rgba(106, 8, 48, 0.28);
+}
+
+.delete-session-button {
+  width: 86px;
+  padding: 0 10px;
+  font-size: 0.78rem;
+}
+
+.delete-current-session {
+  width: 100%;
+  margin: -4px 0 10px;
+}
+
+.active-session-button span,
+.active-session-button strong,
+.active-session-button small {
+  min-width: 0;
+}
+
+.active-session-button span {
+  font-size: 0.86rem;
+  font-weight: 900;
+}
+
+.active-session-button strong {
+  justify-self: end;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+}
+
+.active-session-button small {
+  grid-column: 1 / -1;
+  color: #315e66;
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
 .eyebrow {
   margin: 0 0 4px;
   color: var(--game-yellow);
@@ -1531,6 +1604,30 @@ h3 {
   opacity: 0.62;
   outline: 3px dashed rgba(255, 49, 94, 0.54);
   outline-offset: -8px;
+}
+
+.final-day.swap-target {
+  outline: 4px solid rgba(255, 49, 94, 0.58);
+  outline-offset: -8px;
+  box-shadow: inset 0 0 0 4px rgba(255, 255, 255, 0.38), 0 10px 0 rgba(159, 18, 58, 0.18);
+}
+
+.final-day.swap-source {
+  opacity: 0.82;
+}
+
+.final-day.swap-target .final-locked-meal,
+.final-day.swap-source .final-locked-meal {
+  animation: swap-preview-pop 420ms ease-out;
+}
+
+@keyframes swap-preview-pop {
+  0% {
+    transform: scale(0.985);
+  }
+  100% {
+    transform: scale(1);
+  }
 }
 
 .final-locked-meal {

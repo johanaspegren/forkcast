@@ -30,7 +30,13 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ max_selected_meals: maxSelectedMeals, game_mode: gameMode })
     }),
+  activeSessions: () => request<Session[]>("/api/sessions"),
   getSession: (sessionId: string) => request<Session>(`/api/sessions/${sessionId}`),
+  deleteSession: (sessionId: string, playerId?: string) =>
+    request<{ status: string }>(`/api/sessions/${sessionId}`, {
+      method: "DELETE",
+      body: JSON.stringify({ player_id: playerId || null })
+    }),
   join: (sessionId: string, name: string, avatar?: string) =>
     request<Session>(`/api/sessions/${sessionId}/join`, {
       method: "POST",
