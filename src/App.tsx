@@ -13,6 +13,7 @@ const titleCase = (value: string) => value.slice(0, 1).toUpperCase() + value.sli
 const heartBurstOffsets = [-28, -18, -8, 4, 14, 24, 34, 44];
 const SAVED_WEEKS_KEY = "forkcast.savedWeeks";
 const PLAYER_PROFILE_KEY = "forkcast.playerProfile";
+const DEBUG_BUILD_MARKER = "ANDROID-DRAG-CHECK-2026-08-13-A";
 const avatarChoices = ["🦄", "🐱", "🦊", "🐼", "🐸", "🐵", "🐯", "🐰", "🥘", "🍕", "🌮", "🍜"];
 const SCHOOL_MENU_URL = "https://menu.matildaplatform.com/meals/week/6752f62a2554115c468f8cb8_forskola-skola";
 const defaultCrewLabels = { cook: "Cook", clean: "Cleaner" };
@@ -86,6 +87,14 @@ function readPlayerProfile() {
   } catch (err) {
     return { name: "", avatar: avatarChoices[0] };
   }
+}
+
+function DebugBuildBadge() {
+  return (
+    <div className="debug-build-badge" title="Forkcast client build marker">
+      {DEBUG_BUILD_MARKER}
+    </div>
+  );
 }
 
 function playHappyOink() {
@@ -542,6 +551,11 @@ export default function App() {
   const canSimulateCurrentTurn =
     session?.phase === "REALTIME_RUSH" || session?.phase !== "NEGOTIATION" || Boolean(currentTurnPlayer?.simulated);
 
+  useEffect(() => {
+    (window as Window & { __FORKCAST_DEBUG_BUILD__?: string }).__FORKCAST_DEBUG_BUILD__ = DEBUG_BUILD_MARKER;
+    console.info(`[Forkcast debug build] ${DEBUG_BUILD_MARKER}`);
+  }, []);
+
   if (isDisplayMode) {
     return (
         <DisplayScreen
@@ -629,6 +643,7 @@ export default function App() {
   if (!session || !currentPlayer || !currentPlayerState) {
     return (
       <main className="shell join-screen">
+        <DebugBuildBadge />
         <section className="brand-panel">
           <div className="brand-mark">
             <CookingPot size={30} />
@@ -740,6 +755,7 @@ export default function App() {
 
   return (
     <main className="shell">
+      <DebugBuildBadge />
       <header className="topbar">
         <div>
           <p className="eyebrow">{session.join_code}</p>

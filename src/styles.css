@@ -100,6 +100,23 @@ label {
   overflow-x: hidden;
 }
 
+.debug-build-badge {
+  position: fixed;
+  left: 8px;
+  bottom: 8px;
+  z-index: 8000;
+  max-width: calc(100vw - 16px);
+  padding: 4px 7px;
+  border-radius: 999px;
+  background: rgba(6, 24, 57, 0.82);
+  color: #fff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 10px;
+  line-height: 1;
+  letter-spacing: 0;
+  pointer-events: none;
+}
+
 .join-screen {
   display: grid;
   align-content: center;
