@@ -12,6 +12,8 @@ import { uiAssets } from "./uiAssets";
 const titleCase = (value: string) => value.slice(0, 1).toUpperCase() + value.slice(1);
 const heartBurstOffsets = [-28, -18, -8, 4, 14, 24, 34, 44];
 const SAVED_WEEKS_KEY = "forkcast.savedWeeks";
+const PLAYER_PROFILE_KEY = "forkcast.playerProfile";
+const avatarChoices = ["🦄", "🐱", "🦊", "🐼", "🐸", "🐵", "🐯", "🐰", "🥘", "🍕", "🌮", "🍜"];
 const SCHOOL_MENU_URL = "https://menu.matildaplatform.com/meals/week/6752f62a2554115c468f8cb8_forskola-skola";
 const defaultCrewLabels = { cook: "Cook", clean: "Cleaner" };
 const defaultDayStatusLabels = { today: "Today", reserved: "Reserved", leading: "Leading", open: "Open" };
@@ -72,6 +74,18 @@ function slugId(value: string) {
 
 function maxBy<T>(values: T[], score: (value: T) => number) {
   return values.reduce<T | undefined>((best, value) => (!best || score(value) > score(best) ? value : best), undefined);
+}
+
+function readPlayerProfile() {
+  try {
+    const profile = JSON.parse(localStorage.getItem(PLAYER_PROFILE_KEY) ?? "{}") as { name?: string; avatar?: string };
+    return {
+      name: profile.name ?? "",
+      avatar: profile.avatar ?? avatarChoices[0]
+    };
+  } catch (err) {
+    return { name: "", avatar: avatarChoices[0] };
+  }
 }
 
 function playHappyOink() {
@@ -454,7 +468,7 @@ export default function App() {
   const [schoolMenu, setSchoolMenu] = useState<SchoolMenu | null>(null);
   const [session, setSession] = useState<Session | null>(() => isMockDisplay ? MOCK_WEEKLY_SESSION : null);
   const [playerId, setPlayerId] = useState(localStorage.getItem("forkcast.playerId") ?? "");
-  const [name, setName] = useState("");
+  const [profile, setProfile] = useState(readPlayerProfile);
   const [joinCode, setJoinCode] = useState("");
   const [mealSuggestionCount, setMealSuggestionCount] = useState(3);
   const [gameMode, setGameMode] = useState<GameMode>("CLASSIC_DRAFT");
@@ -482,6 +496,10 @@ export default function App() {
     const socket = connectSessionSocket(session.id, setSession);
     return () => socket.close();
   }, [session?.id]);
+
+  useEffect(() => {
+    localStorage.setItem(PLAYER_PROFILE_KEY, JSON.stringify(profile));
+  }, [profile]);
 
   const mealById = useMemo(() => Object.fromEntries(meals.map((meal) => [meal.id, meal])), [meals]);
   const currentPlayer = playerId ? session?.players[playerId] : undefined;
@@ -522,7 +540,7 @@ export default function App() {
     setError("");
     try {
       const created = await api.createSession(mealSuggestionCount, gameMode);
-      const joined = await api.join(created.id, name || "Johan");
+      const joined = await api.join(created.id, profile.name || "Johan", profile.avatar);
       const id = Object.keys(joined.players).at(-1) ?? "";
       localStorage.setItem("forkcast.playerId", id);
       setPlayerId(id);
@@ -536,7 +554,7 @@ export default function App() {
     setError("");
     try {
       const created = await api.createSession(mealSuggestionCount, gameMode);
-      const joined = await api.join(created.id, name || "Johan");
+      const joined = await api.join(created.id, profile.name || "Johan", profile.avatar);
       const id = Object.keys(joined.players).at(-1) ?? "";
       localStorage.setItem("forkcast.playerId", id);
       setPlayerId(id);
@@ -551,7 +569,7 @@ export default function App() {
     const code = joinCode.trim();
     await run(async () => {
       const existing = await api.getSession(code);
-      const joined = await api.join(existing.id, name || `Player ${Object.keys(existing.players).length + 1}`);
+      const joined = await api.join(existing.id, profile.name || `Player ${Object.keys(existing.players).length + 1}`, profile.avatar);
       const id = Object.keys(joined.players).at(-1) ?? "";
       localStorage.setItem("forkcast.playerId", id);
       setPlayerId(id);
@@ -578,8 +596,26 @@ export default function App() {
         <section className="panel">
           <label>
             Your name
-            <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Johan" />
+            <input
+              value={profile.name}
+              onChange={(event) => setProfile((current) => ({ ...current, name: event.target.value }))}
+              placeholder="Johan"
+            />
           </label>
+          <div className="avatar-picker" aria-label="Choose avatar">
+            {avatarChoices.map((avatar) => (
+              <button
+                aria-label={`Use avatar ${avatar}`}
+                aria-pressed={profile.avatar === avatar}
+                className={profile.avatar === avatar ? "avatar-choice selected" : "avatar-choice"}
+                key={avatar}
+                onClick={() => setProfile((current) => ({ ...current, avatar }))}
+                type="button"
+              >
+                {avatar}
+              </button>
+            ))}
+          </div>
           <label>
             Meal suggestions
             <select
@@ -730,7 +766,14 @@ export default function App() {
         />
       )}
 
-      {session.phase === "COMPLETE" && <FinalForkcast session={session} meals={mealById} />}
+      {session.phase === "COMPLETE" && (
+        <FinalForkcast
+          session={session}
+          meals={mealById}
+          playerId={playerId}
+          onReorder={(fromDay, toDay) => run(() => api.reorderWeek(session.id, playerId, fromDay, toDay))}
+        />
+      )}
     </main>
   );
 }
@@ -1856,9 +1899,22 @@ function ProposalCard({
   );
 }
 
-function FinalForkcast({ session, meals }: { session: Session; meals: Record<string, Meal> }) {
+function FinalForkcast({
+  session,
+  meals,
+  playerId,
+  onReorder
+}: {
+  session: Session;
+  meals: Record<string, Meal>;
+  playerId: string;
+  onReorder: (fromDay: string, toDay: string) => void;
+}) {
   const { year, week } = getDisplayWeek();
   const savedWeekId = `${year}-W${String(week).padStart(2, "0")}`;
+  const adminId = Object.keys(session.players)[0] ?? "";
+  const canReorder = playerId === adminId;
+  const [draggingDay, setDraggingDay] = useState("");
   const [saved, setSaved] = useState(() => {
     const savedWeeks = JSON.parse(localStorage.getItem(SAVED_WEEKS_KEY) ?? "{}") as Record<string, { session_id?: string }>;
     return savedWeeks[savedWeekId]?.session_id === session.id;
@@ -1915,6 +1971,54 @@ function FinalForkcast({ session, meals }: { session: Session; meals: Record<str
     setSaved(true);
   }
 
+  function heartsForDay(day: string, mealId: string) {
+    const proposal = proposalForEntry(day, mealId);
+    if (!proposal) return 0;
+    return session.realtime_stats.hearts_by_proposal[proposal.id] ?? proposal.voting_points;
+  }
+
+  function proposalForEntry(day: string, mealId: string) {
+    const exact = Object.values(session.proposals).find((candidate) => candidate.day === day && candidate.meal_id === mealId);
+    if (exact) return exact;
+    const candidates = Object.values(session.proposals).filter((candidate) => candidate.meal_id === mealId);
+    return maxBy(candidates, (proposal) => session.realtime_stats.hearts_by_proposal[proposal.id] ?? proposal.voting_points);
+  }
+
+  function topSupporterName(proposal: Proposal | undefined) {
+    if (!proposal || Object.keys(proposal.support_points).length === 0) return "No one yet";
+    const playerId = maxBy(Object.keys(proposal.support_points), (id) => proposal.support_points[id] ?? 0);
+    if (!playerId) return "No one yet";
+    return `${session.players[playerId]?.name ?? playerId} ${proposal.support_points[playerId] ?? 0}`;
+  }
+
+  const heartRankByDay = Object.fromEntries(
+    session.days
+      .map((day) => {
+        const entry = session.week[day];
+        return { day, hearts: entry ? heartsForDay(day, entry.meal_id) : 0 };
+      })
+      .sort((a, b) => b.hearts - a.hearts)
+      .map((entry, index) => [entry.day, index + 1])
+  );
+
+  function heartRankLabel(day: string) {
+    const rank = heartRankByDay[day];
+    if (rank === 1) return "Most love in total";
+    if (rank === 2) return "Second most love in total";
+    if (rank === 3) return "Third most love in total";
+    return `Love rank #${rank}`;
+  }
+
+  function dropOnDay(day: string, sourceDay = draggingDay) {
+    if (!canReorder || !sourceDay || sourceDay === day) {
+      setDraggingDay("");
+      return;
+    }
+    setSaved(false);
+    onReorder(sourceDay, day);
+    setDraggingDay("");
+  }
+
   return (
     <section className="stage final">
       <div className="final-header">
@@ -1945,18 +2049,65 @@ function FinalForkcast({ session, meals }: { session: Session; meals: Record<str
           ))}
         </div>
       )}
-      <div className="day-stack">
+      {canReorder && <p className="final-reorder-hint">Drag a meal onto another day to swap them before saving.</p>}
+      <div className="day-stack final-week-stack">
         {session.days.map((day) => {
           const entry = session.week[day];
           if (!entry) return null;
+          const hearts = heartsForDay(day, entry.meal_id);
+          const proposal = proposalForEntry(day, entry.meal_id);
           return (
-            <article className="day locked" key={day}>
+            <article
+              className={
+                draggingDay === day
+                  ? `day locked final-day rush-day rush-day-${day} dragging`
+                  : `day locked final-day rush-day rush-day-${day}`
+              }
+              draggable={canReorder}
+              key={day}
+              onDragStart={(event) => {
+                setDraggingDay(day);
+                event.dataTransfer.effectAllowed = "move";
+                event.dataTransfer.setData("text/plain", day);
+              }}
+              onDragEnd={() => setDraggingDay("")}
+              onDragOver={(event) => {
+                if (canReorder) event.preventDefault();
+              }}
+              onDrop={(event) => {
+                event.preventDefault();
+                dropOnDay(day, event.dataTransfer.getData("text/plain") || draggingDay);
+              }}
+            >
               <h3>{titleCase(day)}</h3>
-              <div className="locked-meal">
-                <span className="meal-emoji">{meals[entry.meal_id]?.emoji}</span>
-                <strong>{meals[entry.meal_id]?.name}</strong>
-                <small>Chef: {entry.chef.map((id) => session.players[id]?.name).join(", ") || "Unassigned"}</small>
-                <small>Cleanup: {entry.cleanup.map((id) => session.players[id]?.name).join(", ") || "Unassigned"}</small>
+              <div className="locked-meal final-locked-meal">
+                <div className="final-meal-title">
+                  <span className="meal-emoji">{meals[entry.meal_id]?.emoji}</span>
+                  <strong>{meals[entry.meal_id]?.name}</strong>
+                  <span className="final-heart-count">
+                    <Heart size={22} fill="currentColor" aria-hidden="true" />
+                    {hearts}
+                  </span>
+                </div>
+                {session.game_mode === "REALTIME_RUSH" && (
+                  <div className="final-rush-summary">
+                    <span>Pitched by: {proposal?.owners.map((id) => session.players[id]?.name ?? id).join(" + ") || "The table"}</span>
+                    <span>Most love: {topSupporterName(proposal)} <Heart size={24} fill="currentColor" aria-hidden="true" /></span>
+                    <span>{heartRankLabel(day)}</span>
+                  </div>
+                )}
+                <div className="final-crew-avatars" aria-label={`${titleCase(day)} crew`}>
+                  <div className="final-role-avatar">
+                    <b>{entry.chef[0] ? session.players[entry.chef[0]]?.avatar ?? "?" : "?"}</b>
+                    <span>Chef</span>
+                    <strong>{entry.chef[0] ? session.players[entry.chef[0]]?.name ?? entry.chef[0] : "Unassigned"}</strong>
+                  </div>
+                  <div className="final-role-avatar">
+                    <b>{entry.cleanup[0] ? session.players[entry.cleanup[0]]?.avatar ?? "?" : "?"}</b>
+                    <span>Clean up</span>
+                    <strong>{entry.cleanup[0] ? session.players[entry.cleanup[0]]?.name ?? entry.cleanup[0] : "Unassigned"}</strong>
+                  </div>
+                </div>
               </div>
             </article>
           );

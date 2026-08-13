@@ -181,6 +181,12 @@ class UnlockDayRequest(BaseModel):
     day: str
 
 
+class ReorderWeekRequest(BaseModel):
+    player_id: str
+    from_day: str
+    to_day: str
+
+
 class CardPlayRequest(BaseModel):
     player_id: str
     card: str

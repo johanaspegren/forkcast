@@ -15,6 +15,7 @@ from backend.forkcast.game.models import (
     RealtimeFreezeRequest,
     RealtimeHeartRequest,
     RealtimeOverrideRequest,
+    ReorderWeekRequest,
     Session,
     UnlockDayRequest,
     VoteRequest,
@@ -189,5 +190,12 @@ async def unlock_day(session_id: str, request: UnlockDayRequest) -> Session:
 @router.post("/sessions/{session_id}/complete")
 async def complete(session_id: str) -> Session:
     session = engine.complete(session_id)
+    await manager.broadcast(session)
+    return session
+
+
+@router.post("/sessions/{session_id}/week/reorder")
+async def reorder_week(session_id: str, request: ReorderWeekRequest) -> Session:
+    session = engine.reorder_week(session_id, request)
     await manager.broadcast(session)
     return session

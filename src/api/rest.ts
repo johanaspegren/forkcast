@@ -31,10 +31,10 @@ export const api = {
       body: JSON.stringify({ max_selected_meals: maxSelectedMeals, game_mode: gameMode })
     }),
   getSession: (sessionId: string) => request<Session>(`/api/sessions/${sessionId}`),
-  join: (sessionId: string, name: string) =>
+  join: (sessionId: string, name: string, avatar?: string) =>
     request<Session>(`/api/sessions/${sessionId}/join`, {
       method: "POST",
-      body: JSON.stringify({ name })
+      body: JSON.stringify({ name, avatar })
     }),
   addSimulatedPlayers: (sessionId: string) =>
     request<Session>(`/api/sessions/${sessionId}/simulate/add-players`, { method: "POST" }),
@@ -124,6 +124,11 @@ export const api = {
     request<Session>(`/api/sessions/${sessionId}/unlock-day`, {
       method: "POST",
       body: JSON.stringify({ player_id: playerId, day })
+    }),
+  reorderWeek: (sessionId: string, playerId: string, fromDay: string, toDay: string) =>
+    request<Session>(`/api/sessions/${sessionId}/week/reorder`, {
+      method: "POST",
+      body: JSON.stringify({ player_id: playerId, from_day: fromDay, to_day: toDay })
     }),
   complete: (sessionId: string) => request<Session>(`/api/sessions/${sessionId}/complete`, { method: "POST" })
 };

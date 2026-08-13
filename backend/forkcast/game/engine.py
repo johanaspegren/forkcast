@@ -26,6 +26,7 @@ from .models import (
     RealtimeOverrideRequest,
     RealtimeOverrideWindow,
     RealtimeStats,
+    ReorderWeekRequest,
     RuleStatus,
     Session,
     UnlockDayRequest,
@@ -533,6 +534,19 @@ class GameEngine:
         if blocking:
             raise HTTPException(status_code=409, detail="House rules still need exceptions")
         session.phase = GamePhase.COMPLETE
+        return self._refresh_rules(session)
+
+    def reorder_week(self, session_id: str, request: ReorderWeekRequest) -> Session:
+        session = self._require_phase(session_id, GamePhase.COMPLETE)
+        admin_id = next(iter(session.players), None)
+        if request.player_id != admin_id:
+            raise HTTPException(status_code=403, detail="Only the session admin can reorder the final week")
+        if request.from_day not in session.days or request.to_day not in session.days:
+            raise HTTPException(status_code=422, detail="Unknown day")
+        if request.from_day == request.to_day:
+            return self._refresh_rules(session)
+        session.week[request.from_day], session.week[request.to_day] = session.week[request.to_day], session.week[request.from_day]
+        self._log(session, f"{session.players[request.player_id].name} moved dinner between {request.from_day} and {request.to_day}.")
         return self._refresh_rules(session)
 
     def _upsert_proposal(self, session: Session, player_id: str, meal_id: str, day: str, points: int) -> None:
