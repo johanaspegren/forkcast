@@ -632,7 +632,7 @@ h3 {
   border: 2px solid rgba(255, 255, 255, 0.82);
   outline: 2px solid transparent;
   border-radius: 16px;
-  touch-action: manipulation;
+  touch-action: none;
   -webkit-touch-callout: none;
   user-select: none;
   box-shadow: 0 5px 0 rgba(39, 70, 160, 0.14);
@@ -729,7 +729,7 @@ h3 {
   border-radius: 14px;
   outline: 2px solid transparent;
   cursor: pointer;
-  touch-action: manipulation;
+  touch-action: none;
   -webkit-touch-callout: none;
   user-select: none;
 }
@@ -1617,6 +1617,9 @@ h3 {
 
 .final-day {
   cursor: grab;
+  touch-action: none;
+  -webkit-touch-callout: none;
+  user-select: none;
 }
 
 .final-day h3 {
