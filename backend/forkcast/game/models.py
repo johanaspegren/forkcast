@@ -8,8 +8,14 @@ class GamePhase(StrEnum):
     SECRET_PLACEMENT = "SECRET_PLACEMENT"
     REVEAL = "REVEAL"
     NEGOTIATION = "NEGOTIATION"
+    REALTIME_RUSH = "REALTIME_RUSH"
     FINAL_VOTE = "FINAL_VOTE"
     COMPLETE = "COMPLETE"
+
+
+class GameMode(StrEnum):
+    CLASSIC_DRAFT = "CLASSIC_DRAFT"
+    REALTIME_RUSH = "REALTIME_RUSH"
 
 
 class Meal(BaseModel):
@@ -72,10 +78,31 @@ class RuleStatus(BaseModel):
     detail: str
 
 
+class RealtimeOverrideWindow(BaseModel):
+    id: str
+    rule_id: str
+    proposal_ids: list[str] = Field(default_factory=list)
+    message: str
+    opened_at: float
+    closes_at: float
+    votes: dict[str, bool] = Field(default_factory=dict)
+    threshold: int
+    status: str = "OPEN"
+
+
+class RealtimeStats(BaseModel):
+    hearts_by_player: dict[str, int] = Field(default_factory=dict)
+    hearts_by_proposal: dict[str, int] = Field(default_factory=dict)
+    own_hearts_by_player: dict[str, int] = Field(default_factory=dict)
+    freezes_by_player: dict[str, int] = Field(default_factory=dict)
+    awards: list[str] = Field(default_factory=list)
+
+
 class Session(BaseModel):
     id: str
     join_code: str
     phase: GamePhase
+    game_mode: GameMode = GameMode.CLASSIC_DRAFT
     days: list[str]
     players: dict[str, Player] = Field(default_factory=dict)
     player_state: dict[str, PlayerSession] = Field(default_factory=dict)
@@ -92,6 +119,12 @@ class Session(BaseModel):
     rule_overrides: list[str] = Field(default_factory=list)
     general_assembly: dict[str, dict[str, int]] = Field(default_factory=dict)
     general_assembly_threshold: int = 4
+    realtime_started_at: float | None = None
+    realtime_ends_at: float | None = None
+    realtime_freeze_until: dict[str, float] = Field(default_factory=dict)
+    realtime_freezes_used: list[str] = Field(default_factory=list)
+    realtime_override_window: RealtimeOverrideWindow | None = None
+    realtime_stats: RealtimeStats = Field(default_factory=RealtimeStats)
 
 
 class JoinRequest(BaseModel):
@@ -101,6 +134,7 @@ class JoinRequest(BaseModel):
 
 class CreateSessionRequest(BaseModel):
     max_selected_meals: int = 3
+    game_mode: GameMode = GameMode.CLASSIC_DRAFT
 
 
 class MealSelectionRequest(BaseModel):
@@ -154,3 +188,18 @@ class CardPlayRequest(BaseModel):
     day: str | None = None
     target_day: str | None = None
     meal_id: str | None = None
+
+
+class RealtimeHeartRequest(BaseModel):
+    player_id: str
+    proposal_id: str
+
+
+class RealtimeFreezeRequest(BaseModel):
+    player_id: str
+    proposal_id: str
+
+
+class RealtimeOverrideRequest(BaseModel):
+    player_id: str
+    window_id: str

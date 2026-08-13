@@ -4,8 +4,11 @@ export type GamePhase =
   | "SECRET_PLACEMENT"
   | "REVEAL"
   | "NEGOTIATION"
+  | "REALTIME_RUSH"
   | "FINAL_VOTE"
   | "COMPLETE";
+
+export type GameMode = "CLASSIC_DRAFT" | "REALTIME_RUSH";
 
 export type Meal = {
   id: string;
@@ -67,10 +70,31 @@ export type RuleStatus = {
   detail: string;
 };
 
+export type RealtimeOverrideWindow = {
+  id: string;
+  rule_id: string;
+  proposal_ids: string[];
+  message: string;
+  opened_at: number;
+  closes_at: number;
+  votes: Record<string, boolean>;
+  threshold: number;
+  status: "OPEN" | "PASSED" | "FAILED";
+};
+
+export type RealtimeStats = {
+  hearts_by_player: Record<string, number>;
+  hearts_by_proposal: Record<string, number>;
+  own_hearts_by_player: Record<string, number>;
+  freezes_by_player: Record<string, number>;
+  awards: string[];
+};
+
 export type Session = {
   id: string;
   join_code: string;
   phase: GamePhase;
+  game_mode: GameMode;
   days: string[];
   players: Record<string, Player>;
   player_state: Record<string, PlayerSession>;
@@ -87,6 +111,12 @@ export type Session = {
   rule_overrides: string[];
   general_assembly: Record<string, Record<string, number>>;
   general_assembly_threshold: number;
+  realtime_started_at: number | null;
+  realtime_ends_at: number | null;
+  realtime_freeze_until: Record<string, number>;
+  realtime_freezes_used: string[];
+  realtime_override_window: RealtimeOverrideWindow | null;
+  realtime_stats: RealtimeStats;
 };
 
 export type SchoolMenuCourse = {

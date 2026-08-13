@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import random
 import string
+import time
 import uuid
 from fastapi import HTTPException
 
@@ -9,6 +10,7 @@ from .models import (
     CardPlayRequest,
     CreateSessionRequest,
     GamePhase,
+    GameMode,
     GeneralAssemblyRequest,
     JoinRequest,
     LockDayRequest,
@@ -19,6 +21,11 @@ from .models import (
     Player,
     PlayerSession,
     Proposal,
+    RealtimeFreezeRequest,
+    RealtimeHeartRequest,
+    RealtimeOverrideRequest,
+    RealtimeOverrideWindow,
+    RealtimeStats,
     RuleStatus,
     Session,
     UnlockDayRequest,
@@ -70,6 +77,7 @@ class GameEngine:
             id=session_id,
             join_code=f"FORK-{self._join_suffix()}",
             phase=GamePhase.LOBBY,
+            game_mode=request.game_mode if request else GameMode.CLASSIC_DRAFT,
             days=DAYS.copy(),
             week={day: None for day in DAYS},
             max_selected_meals=max_selected_meals,
@@ -146,9 +154,24 @@ class GameEngine:
             return self._refresh_rules(session)
 
         if session.phase == GamePhase.REVEAL:
-            session.phase = GamePhase.NEGOTIATION
-            self._start_turns(session)
+            self._begin_negotiation_phase(session)
             return self._refresh_rules(session)
+
+        if session.phase == GamePhase.REALTIME_RUSH:
+            for player_id in simulated_ids:
+                now = time.time()
+                active = [
+                    proposal
+                    for proposal in session.proposals.values()
+                    if proposal.status == "ACTIVE" and session.realtime_freeze_until.get(proposal.id, 0) <= now
+                ]
+                if active:
+                    proposal = random.choice(active)
+                    if random.random() < 0.12 and player_id not in session.realtime_freezes_used:
+                        self.realtime_freeze(session.id, RealtimeFreezeRequest(player_id=player_id, proposal_id=proposal.id))
+                    else:
+                        self.realtime_heart(session.id, RealtimeHeartRequest(player_id=player_id, proposal_id=proposal.id))
+            return self.realtime_tick(session_id)
 
         if session.phase == GamePhase.NEGOTIATION:
             current_player_id = self._current_player_id(session)
@@ -239,8 +262,83 @@ class GameEngine:
 
     def begin_negotiation(self, session_id: str) -> Session:
         session = self._require_phase(session_id, GamePhase.REVEAL)
-        session.phase = GamePhase.NEGOTIATION
-        self._start_turns(session)
+        self._begin_negotiation_phase(session)
+        return self._refresh_rules(session)
+
+    def realtime_heart(self, session_id: str, request: RealtimeHeartRequest) -> Session:
+        session = self._require_phase(session_id, GamePhase.REALTIME_RUSH)
+        self._player_state(session, request.player_id)
+        self._realtime_tick(session)
+        if session.phase != GamePhase.REALTIME_RUSH:
+            return self._refresh_rules(session)
+        proposal = self._active_proposal(session, request.proposal_id)
+        now = time.time()
+        if session.realtime_started_at and now < session.realtime_started_at + 3:
+            raise HTTPException(status_code=409, detail="Rush has not started yet")
+        if session.realtime_freeze_until.get(proposal.id, 0) > now:
+            raise HTTPException(status_code=409, detail="That meal is frozen for a few seconds")
+
+        proposal.voting_points += 1
+        if request.player_id not in proposal.supporters:
+            proposal.supporters.append(request.player_id)
+        proposal.support_points[request.player_id] = proposal.support_points.get(request.player_id, 0) + 1
+        stats = session.realtime_stats
+        stats.hearts_by_player[request.player_id] = stats.hearts_by_player.get(request.player_id, 0) + 1
+        stats.hearts_by_proposal[proposal.id] = stats.hearts_by_proposal.get(proposal.id, 0) + 1
+        if request.player_id in proposal.owners:
+            stats.own_hearts_by_player[request.player_id] = stats.own_hearts_by_player.get(request.player_id, 0) + 1
+
+        player_name = session.players[request.player_id].name
+        owner_name = session.players[proposal.owners[0]].name if proposal.owners else "the table"
+        day = proposal.day.capitalize()
+        meal_name = MEALS[proposal.meal_id].name
+        lines = [
+            f"{player_name} LOVES {owner_name}'s {meal_name} on {day}!!!",
+            f"{day} is looking like {meal_name}, folks!!!",
+            f"{player_name} just lovebombed {meal_name}.",
+        ]
+        self._log(session, random.choice(lines))
+        self._check_realtime_rules(session, now)
+        return self._refresh_rules(session)
+
+    def realtime_freeze(self, session_id: str, request: RealtimeFreezeRequest) -> Session:
+        session = self._require_phase(session_id, GamePhase.REALTIME_RUSH)
+        self._player_state(session, request.player_id)
+        self._realtime_tick(session)
+        if session.phase != GamePhase.REALTIME_RUSH:
+            return self._refresh_rules(session)
+        proposal = self._active_proposal(session, request.proposal_id)
+        now = time.time()
+        if session.realtime_started_at and now < session.realtime_started_at + 3:
+            raise HTTPException(status_code=409, detail="Rush has not started yet")
+        if request.player_id in session.realtime_freezes_used:
+            raise HTTPException(status_code=409, detail="Freeze has already been used")
+        until = now + 5
+        session.realtime_freezes_used.append(request.player_id)
+        session.realtime_freeze_until[proposal.id] = until
+        stats = session.realtime_stats
+        stats.freezes_by_player[request.player_id] = stats.freezes_by_player.get(request.player_id, 0) + 1
+        self._log(session, f"{session.players[request.player_id].name} froze {MEALS[proposal.meal_id].name} for 5 seconds.")
+        return self._refresh_rules(session)
+
+    def realtime_override(self, session_id: str, request: RealtimeOverrideRequest) -> Session:
+        session = self._require_phase(session_id, GamePhase.REALTIME_RUSH)
+        self._player_state(session, request.player_id)
+        self._realtime_tick(session)
+        window = session.realtime_override_window
+        if not window or window.id != request.window_id or window.status != "OPEN":
+            raise HTTPException(status_code=409, detail="No active override vote")
+        window.votes[request.player_id] = True
+        if sum(1 for agreed in window.votes.values() if agreed) >= window.threshold:
+            window.status = "PASSED"
+            if window.rule_id not in session.rule_overrides:
+                session.rule_overrides.append(window.rule_id)
+            self._log(session, f"Override passed: {window.message}")
+        return self._refresh_rules(session)
+
+    def realtime_tick(self, session_id: str) -> Session:
+        session = self._require_phase(session_id, GamePhase.REALTIME_RUSH)
+        self._realtime_tick(session)
         return self._refresh_rules(session)
 
     def vote(self, session_id: str, request: VoteRequest) -> Session:
@@ -303,8 +401,15 @@ class GameEngine:
         return self._refresh_rules(session)
 
     def play_card(self, session_id: str, request: CardPlayRequest) -> Session:
-        session = self._require_phase(session_id, GamePhase.NEGOTIATION)
-        self._require_turn(session, request.player_id)
+        session = self._require_phase(session_id, GamePhase.NEGOTIATION, GamePhase.REALTIME_RUSH)
+        if session.phase == GamePhase.NEGOTIATION:
+            self._require_turn(session, request.player_id)
+        if session.phase == GamePhase.REALTIME_RUSH:
+            self._realtime_tick(session)
+            if session.phase != GamePhase.REALTIME_RUSH:
+                return self._refresh_rules(session)
+            if session.realtime_started_at and time.time() < session.realtime_started_at + 3:
+                raise HTTPException(status_code=409, detail="Rush has not started yet")
         player_state = self._player_state(session, request.player_id)
         if request.card not in player_state.action_cards:
             raise HTTPException(status_code=422, detail="Card is not in this player's hand")
@@ -651,6 +756,152 @@ class GameEngine:
         if not proposal.cleanup_volunteers:
             proposal.cleanup_volunteers.append(player_id)
             self._log(session, f"{session.players[player_id].name} volunteered to clean after {MEALS[proposal.meal_id].name}.")
+
+    def _begin_negotiation_phase(self, session: Session) -> None:
+        if session.game_mode == GameMode.REALTIME_RUSH:
+            now = time.time()
+            session.phase = GamePhase.REALTIME_RUSH
+            session.realtime_started_at = now
+            session.realtime_ends_at = now + 63
+            session.realtime_freeze_until = {}
+            session.realtime_freezes_used = []
+            session.realtime_override_window = None
+            session.realtime_stats = RealtimeStats()
+            self._log(session, "Realtime Rush started. Lovebomb your favorites for 60 seconds!")
+            return
+        session.phase = GamePhase.NEGOTIATION
+        self._start_turns(session)
+
+    def _realtime_tick(self, session: Session) -> None:
+        if session.phase != GamePhase.REALTIME_RUSH:
+            return
+        now = time.time()
+        session.realtime_freeze_until = {
+            proposal_id: until for proposal_id, until in session.realtime_freeze_until.items() if until > now
+        }
+        window = session.realtime_override_window
+        if window and window.status == "OPEN" and now >= window.closes_at:
+            window.status = "FAILED"
+            for proposal_id in window.proposal_ids:
+                session.realtime_freeze_until[proposal_id] = now + 5
+            self._log(session, "Override missed. The rule-breaking meal is frozen for 5 seconds.")
+        if session.realtime_ends_at and now >= session.realtime_ends_at:
+            self._finish_realtime(session)
+
+    def _check_realtime_rules(self, session: Session, now: float) -> None:
+        if "max_one_minced" in session.rule_overrides:
+            return
+        window = session.realtime_override_window
+        if window and window.status == "OPEN" and window.closes_at > now:
+            return
+        leaders = self._realtime_leaders(session)
+        minced_leaders = [
+            proposal for proposal in leaders.values() if proposal and MEALS[proposal.meal_id].minced_meat
+        ]
+        if len(minced_leaders) <= 1:
+            return
+        threshold = max(2, (len(session.players) // 2) + 1)
+        session.realtime_override_window = RealtimeOverrideWindow(
+            id=uuid.uuid4().hex[:8],
+            rule_id="max_one_minced",
+            proposal_ids=[proposal.id for proposal in minced_leaders],
+            message="Can not have two minced meat dinners. Override?",
+            opened_at=now,
+            closes_at=now + 3,
+            threshold=threshold,
+        )
+        self._log(session, "WARNING: Can not have two minced meat dinners. Override?")
+
+    def _finish_realtime(self, session: Session) -> None:
+        leaders = self._realtime_leaders(session)
+        selected: dict[str, Proposal] = {day: proposal for day, proposal in leaders.items() if proposal}
+        if "max_one_minced" not in session.rule_overrides:
+            minced_days = [day for day, proposal in selected.items() if MEALS[proposal.meal_id].minced_meat]
+            for day in minced_days[1:]:
+                replacement = self._best_day_proposal(
+                    session,
+                    day,
+                    lambda proposal: not MEALS[proposal.meal_id].minced_meat,
+                )
+                if replacement:
+                    selected[day] = replacement
+        if "one_fish" not in session.rule_overrides and not any(MEALS[proposal.meal_id].fish for proposal in selected.values()):
+            best_fish = self._best_proposal(session, lambda proposal: MEALS[proposal.meal_id].fish)
+            if best_fish:
+                selected[best_fish.day] = best_fish
+
+        player_ids = list(session.players)
+        for index, day in enumerate(session.days):
+            proposal = selected.get(day)
+            if not proposal:
+                fallback_owner = player_ids[index % len(player_ids)]
+                self._upsert_proposal(session, fallback_owner, "salmon" if index == len(session.days) - 1 else "pasta", day, 0)
+                proposal = self._realtime_leaders(session).get(day)
+            if not proposal:
+                continue
+            fallback_player_id = proposal.owners[0] if proposal.owners else player_ids[index % len(player_ids)]
+            self._ensure_chore_commitments(session, proposal, fallback_player_id)
+            session.week[day] = WeekEntry(
+                meal_id=proposal.meal_id,
+                chef=proposal.chef_volunteers[:1],
+                cleanup=proposal.cleanup_volunteers[:1],
+                rule_exceptions=[rule_id for rule_id in session.rule_overrides if rule_id in {"one_fish", "max_one_minced"}],
+            )
+            proposal.status = "LOCKED"
+
+        session.realtime_stats.awards = self._realtime_awards(session)
+        session.phase = GamePhase.COMPLETE
+        self._log(session, "Time! The Realtime Rush Forkcast is locked.")
+
+    def _realtime_leaders(self, session: Session) -> dict[str, Proposal | None]:
+        return {
+            day: self._best_day_proposal(session, day, lambda proposal: proposal.status == "ACTIVE")
+            for day in session.days
+        }
+
+    def _best_day_proposal(self, session: Session, day: str, predicate) -> Proposal | None:
+        proposals = [
+            proposal
+            for proposal in session.proposals.values()
+            if proposal.day == day and proposal.status == "ACTIVE" and predicate(proposal)
+        ]
+        if not proposals:
+            return None
+        return max(proposals, key=lambda proposal: (proposal.voting_points, len(proposal.supporters)))
+
+    def _best_proposal(self, session: Session, predicate) -> Proposal | None:
+        proposals = [proposal for proposal in session.proposals.values() if proposal.status == "ACTIVE" and predicate(proposal)]
+        if not proposals:
+            return None
+        return max(proposals, key=lambda proposal: (proposal.voting_points, len(proposal.supporters)))
+
+    def _realtime_awards(self, session: Session) -> list[str]:
+        stats = session.realtime_stats
+        awards: list[str] = []
+        if stats.hearts_by_proposal:
+            proposal_id = max(stats.hearts_by_proposal, key=lambda key: stats.hearts_by_proposal[key])
+            proposal = session.proposals.get(proposal_id)
+            if proposal:
+                owner = session.players[proposal.owners[0]].name if proposal.owners else "the table"
+                awards.append(f"Family {MEALS[proposal.meal_id].name.lower()} fan: {owner}!")
+        if stats.hearts_by_player:
+            player_id = max(stats.hearts_by_player, key=lambda key: stats.hearts_by_player[key])
+            awards.append(f"Most hearts per second: {session.players[player_id].name}")
+        if stats.own_hearts_by_player:
+            player_id = max(stats.own_hearts_by_player, key=lambda key: stats.own_hearts_by_player[key])
+            awards.append(f"Most happy with their own selection: {session.players[player_id].name}")
+        chef_counts: dict[str, int] = {}
+        for entry in session.week.values():
+            if entry:
+                for player_id in entry.chef:
+                    chef_counts[player_id] = chef_counts.get(player_id, 0) + 1
+        if chef_counts:
+            player_id = max(chef_counts, key=lambda key: chef_counts[key])
+            awards.append(f"{session.players[player_id].name} is leading chef with {chef_counts[player_id]} meals!")
+        if stats.freezes_by_player:
+            player_id = max(stats.freezes_by_player, key=lambda key: stats.freezes_by_player[key])
+            awards.append(f"Coolest freeze: {session.players[player_id].name}")
+        return awards[:5]
 
     def _require_lockable(self, session: Session, proposal: Proposal) -> None:
         day_proposals = [

@@ -12,6 +12,9 @@ from backend.forkcast.game.models import (
     MealSelectionRequest,
     PassTurnRequest,
     PlacementRequest,
+    RealtimeFreezeRequest,
+    RealtimeHeartRequest,
+    RealtimeOverrideRequest,
     Session,
     UnlockDayRequest,
     VoteRequest,
@@ -109,6 +112,34 @@ async def place_meals(session_id: str, request: PlacementRequest) -> Session:
 @router.post("/sessions/{session_id}/reveal/continue")
 async def begin_negotiation(session_id: str) -> Session:
     session = engine.begin_negotiation(session_id)
+    await manager.broadcast(session)
+    return session
+
+
+@router.post("/sessions/{session_id}/realtime/heart")
+async def realtime_heart(session_id: str, request: RealtimeHeartRequest) -> Session:
+    session = engine.realtime_heart(session_id, request)
+    await manager.broadcast(session)
+    return session
+
+
+@router.post("/sessions/{session_id}/realtime/freeze")
+async def realtime_freeze(session_id: str, request: RealtimeFreezeRequest) -> Session:
+    session = engine.realtime_freeze(session_id, request)
+    await manager.broadcast(session)
+    return session
+
+
+@router.post("/sessions/{session_id}/realtime/override")
+async def realtime_override(session_id: str, request: RealtimeOverrideRequest) -> Session:
+    session = engine.realtime_override(session_id, request)
+    await manager.broadcast(session)
+    return session
+
+
+@router.post("/sessions/{session_id}/realtime/tick")
+async def realtime_tick(session_id: str) -> Session:
+    session = engine.realtime_tick(session_id)
     await manager.broadcast(session)
     return session
 

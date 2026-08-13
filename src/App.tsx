@@ -1,4 +1,4 @@
-import { Bot, Check, ChevronLeft, ChevronRight, CookingPot, FastForward, Info, Minus, Plus, Save, Sparkles, Users } from "lucide-react";
+import { Bot, Check, ChevronLeft, ChevronRight, CookingPot, FastForward, Heart, Info, Minus, Plus, Save, Snowflake, Sparkles, Users } from "lucide-react";
 import QRCode from "qrcode";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -6,10 +6,11 @@ import { api } from "./api/rest";
 import { connectSessionSocket } from "./api/websocket";
 import { PlayerAvatar } from "./components/PlayerAvatar";
 import { VotingPoints } from "./components/VotingPoints";
-import type { Meal, Proposal, SavedWeek, SchoolMenu, Session } from "./game/gameTypes";
+import type { GameMode, Meal, Proposal, SavedWeek, SchoolMenu, Session } from "./game/gameTypes";
 import { uiAssets } from "./uiAssets";
 
 const titleCase = (value: string) => value.slice(0, 1).toUpperCase() + value.slice(1);
+const heartBurstOffsets = [-28, -18, -8, 4, 14, 24, 34, 44];
 const SAVED_WEEKS_KEY = "forkcast.savedWeeks";
 const SCHOOL_MENU_URL = "https://menu.matildaplatform.com/meals/week/6752f62a2554115c468f8cb8_forskola-skola";
 const defaultCrewLabels = { cook: "Cook", clean: "Cleaner" };
@@ -69,6 +70,43 @@ function slugId(value: string) {
   return slug || "unassigned";
 }
 
+function maxBy<T>(values: T[], score: (value: T) => number) {
+  return values.reduce<T | undefined>((best, value) => (!best || score(value) > score(best) ? value : best), undefined);
+}
+
+function playHappyOink() {
+  const AudioContext =
+    window.AudioContext ||
+    (window as Window & typeof globalThis & { webkitAudioContext?: typeof window.AudioContext }).webkitAudioContext;
+  if (!AudioContext) return;
+  const context = new AudioContext();
+  const gain = context.createGain();
+  const oscillator = context.createOscillator();
+  const wobble = context.createOscillator();
+  const wobbleGain = context.createGain();
+  const now = context.currentTime;
+
+  oscillator.type = "sine";
+  oscillator.frequency.setValueAtTime(390, now);
+  oscillator.frequency.exponentialRampToValueAtTime(210, now + 0.09);
+  wobble.type = "square";
+  wobble.frequency.setValueAtTime(24, now);
+  wobbleGain.gain.setValueAtTime(18, now);
+
+  wobble.connect(wobbleGain);
+  wobbleGain.connect(oscillator.frequency);
+  oscillator.connect(gain);
+  gain.connect(context.destination);
+  gain.gain.setValueAtTime(0.0001, now);
+  gain.gain.exponentialRampToValueAtTime(0.08, now + 0.012);
+  gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.13);
+  oscillator.start(now);
+  wobble.start(now);
+  oscillator.stop(now + 0.14);
+  wobble.stop(now + 0.14);
+  window.setTimeout(() => context.close().catch(() => undefined), 220);
+}
+
 function savedWeekToSession(savedWeek: SavedWeek): Session {
   const players: Session["players"] = {};
   const ensurePlayer = (name: string) => {
@@ -100,6 +138,7 @@ function savedWeekToSession(savedWeek: SavedWeek): Session {
     id: savedWeek.id,
     join_code: savedWeek.id,
     phase: "COMPLETE",
+    game_mode: "CLASSIC_DRAFT",
     days: savedWeek.days,
     players,
     player_state: {},
@@ -115,7 +154,19 @@ function savedWeekToSession(savedWeek: SavedWeek): Session {
     max_action_cards_played: 2,
     rule_overrides: savedWeek.rule_overrides,
     general_assembly: {},
-    general_assembly_threshold: 4
+    general_assembly_threshold: 4,
+    realtime_started_at: null,
+    realtime_ends_at: null,
+    realtime_freeze_until: {},
+    realtime_freezes_used: [],
+    realtime_override_window: null,
+    realtime_stats: {
+      hearts_by_player: {},
+      hearts_by_proposal: {},
+      own_hearts_by_player: {},
+      freezes_by_player: {},
+      awards: []
+    }
   };
 }
 
@@ -348,6 +399,7 @@ const MOCK_WEEKLY_SESSION: Session = {
   id: "mock-week",
   join_code: "DEMO-WEEK",
   phase: "COMPLETE",
+  game_mode: "CLASSIC_DRAFT",
   days: ["monday", "tuesday", "wednesday", "thursday", "friday"],
   players: {
     johan: { id: "johan", name: "Johan", avatar: "🥘", favourite_meals: ["salmon", "tacos", "pasta"], simulated: false },
@@ -377,7 +429,19 @@ const MOCK_WEEKLY_SESSION: Session = {
   max_action_cards_played: 2,
   rule_overrides: [],
   general_assembly: {},
-  general_assembly_threshold: 4
+  general_assembly_threshold: 4,
+  realtime_started_at: null,
+  realtime_ends_at: null,
+  realtime_freeze_until: {},
+  realtime_freezes_used: [],
+  realtime_override_window: null,
+  realtime_stats: {
+    hearts_by_player: {},
+    hearts_by_proposal: {},
+    own_hearts_by_player: {},
+    freezes_by_player: {},
+    awards: []
+  }
 };
 
 export default function App() {
@@ -393,6 +457,7 @@ export default function App() {
   const [name, setName] = useState("");
   const [joinCode, setJoinCode] = useState("");
   const [mealSuggestionCount, setMealSuggestionCount] = useState(3);
+  const [gameMode, setGameMode] = useState<GameMode>("CLASSIC_DRAFT");
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -425,7 +490,8 @@ export default function App() {
     ? session.turn_order[session.current_turn_index % session.turn_order.length]
     : "";
   const currentTurnPlayer = currentTurnId && session ? session.players[currentTurnId] : undefined;
-  const canSimulateCurrentTurn = session?.phase !== "NEGOTIATION" || Boolean(currentTurnPlayer?.simulated);
+  const canSimulateCurrentTurn =
+    session?.phase === "REALTIME_RUSH" || session?.phase !== "NEGOTIATION" || Boolean(currentTurnPlayer?.simulated);
 
   if (isDisplayMode) {
     return (
@@ -455,7 +521,7 @@ export default function App() {
   async function createAndJoin() {
     setError("");
     try {
-      const created = await api.createSession(mealSuggestionCount);
+      const created = await api.createSession(mealSuggestionCount, gameMode);
       const joined = await api.join(created.id, name || "Johan");
       const id = Object.keys(joined.players).at(-1) ?? "";
       localStorage.setItem("forkcast.playerId", id);
@@ -469,7 +535,7 @@ export default function App() {
   async function createSimulation() {
     setError("");
     try {
-      const created = await api.createSession(mealSuggestionCount);
+      const created = await api.createSession(mealSuggestionCount, gameMode);
       const joined = await api.join(created.id, name || "Johan");
       const id = Object.keys(joined.players).at(-1) ?? "";
       localStorage.setItem("forkcast.playerId", id);
@@ -527,6 +593,13 @@ export default function App() {
               ))}
             </select>
           </label>
+          <label>
+            Game mode
+            <select value={gameMode} onChange={(event) => setGameMode(event.target.value as GameMode)}>
+              <option value="CLASSIC_DRAFT">Classic Draft</option>
+              <option value="REALTIME_RUSH">Realtime Rush</option>
+            </select>
+          </label>
           <button className="primary" onClick={createAndJoin}>
             <Plus size={18} /> Create Session
           </button>
@@ -564,7 +637,7 @@ export default function App() {
 
       <div className="phase-track">
         <span>{session.phase.replace("_", " ")}</span>
-        <strong>{Object.keys(session.players).length} / {session.max_players}</strong>
+        <strong>{session.game_mode === "REALTIME_RUSH" ? "Rush" : `${Object.keys(session.players).length} / ${session.max_players}`}</strong>
       </div>
 
       {error && <p className="error">{error}</p>}
@@ -641,6 +714,19 @@ export default function App() {
           onUnlock={(day) => run(() => api.unlockDay(session.id, playerId, day))}
           onGeneralAssembly={(ruleId, points) => run(() => api.generalAssembly(session.id, playerId, ruleId, points))}
           onComplete={() => run(() => api.complete(session.id))}
+        />
+      )}
+
+      {session.phase === "REALTIME_RUSH" && (
+        <RealtimeRush
+          session={session}
+          meals={mealById}
+          playerId={playerId}
+          onHeart={(proposalId) => run(() => api.realtimeHeart(session.id, playerId, proposalId))}
+          onFreeze={(proposalId) => run(() => api.realtimeFreeze(session.id, playerId, proposalId))}
+          onPlayCard={(payload) => run(() => api.playCard(session.id, { player_id: playerId, ...payload }))}
+          onOverride={(windowId) => run(() => api.realtimeOverride(session.id, playerId, windowId))}
+          onTick={() => run(() => api.realtimeTick(session.id))}
         />
       )}
 
@@ -1390,6 +1476,212 @@ function Board({
   );
 }
 
+function RealtimeRush({
+  session,
+  meals,
+  playerId,
+  onHeart,
+  onFreeze,
+  onPlayCard,
+  onOverride,
+  onTick
+}: {
+  session: Session;
+  meals: Record<string, Meal>;
+  playerId: string;
+  onHeart: (proposalId: string) => void;
+  onFreeze: (proposalId: string) => void;
+  onPlayCard: (payload: { card: string; proposal_id: string }) => void;
+  onOverride: (windowId: string) => void;
+  onTick: () => void;
+}) {
+  const [now, setNow] = useState(() => Date.now() / 1000);
+  const [heartBursts, setHeartBursts] = useState<Array<{ id: string; proposalId: string }>>([]);
+  const usedFreeze = session.realtime_freezes_used.includes(playerId);
+  const overrideWindow = session.realtime_override_window;
+  const openWindow = overrideWindow?.status === "OPEN" ? overrideWindow : null;
+  const countdownRemaining = Math.max(0, Math.ceil(((session.realtime_started_at ?? now) + 3) - now));
+  const rushHasStarted = countdownRemaining <= 0;
+  const secondsRemaining = Math.max(0, Math.ceil((session.realtime_ends_at ?? now) - Math.max(now, (session.realtime_started_at ?? now) + 3)));
+  const overrideSeconds = openWindow ? Math.max(0, Math.ceil(openWindow.closes_at - now)) : 0;
+  const voteCount = openWindow ? Object.values(openWindow.votes).filter(Boolean).length : 0;
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      const nextNow = Date.now() / 1000;
+      setNow(nextNow);
+      if (session.realtime_ends_at && nextNow >= session.realtime_ends_at) {
+        onTick();
+      }
+      if (session.realtime_override_window?.status === "OPEN" && nextNow >= session.realtime_override_window.closes_at) {
+        onTick();
+      }
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [onTick, session.realtime_ends_at, session.realtime_override_window?.closes_at, session.realtime_override_window?.status]);
+
+  function handleHeart(proposalId: string) {
+    if (!rushHasStarted) return;
+    playHappyOink();
+    const burstId = `${proposalId}-${Date.now()}-${Math.random()}`;
+    setHeartBursts((current) => [...current.slice(-18), { id: burstId, proposalId }]);
+    window.setTimeout(() => {
+      setHeartBursts((current) => current.filter((burst) => burst.id !== burstId));
+    }, 760);
+    onHeart(proposalId);
+  }
+
+  return (
+    <section className="stage rush-stage">
+      {!rushHasStarted && (
+        <div className="rush-countdown" aria-live="assertive">
+          <span>{countdownRemaining > 0 ? countdownRemaining : "STARTTT!!!!!!"}</span>
+        </div>
+      )}
+      <div className="rush-timer" aria-live="polite">
+        <span>{rushHasStarted ? "Rush" : "Get ready"}</span>
+        <strong>{secondsRemaining}s</strong>
+      </div>
+
+      {openWindow && (
+        <div className="rush-warning" role="alert">
+          <strong>WARNING</strong>
+          <span>{openWindow.message}</span>
+          <button disabled={Boolean(openWindow.votes[playerId])} onClick={() => onOverride(openWindow.id)}>
+            Override {voteCount}/{openWindow.threshold} · {overrideSeconds}s
+          </button>
+        </div>
+      )}
+
+      <div className="rush-headline">
+        <Sparkles size={34} />
+        <div>
+          <p className="eyebrow">Realtime Rush</p>
+          <h2>Lovebomb dinner into place</h2>
+        </div>
+      </div>
+
+      <div className="day-stack rush-days">
+        {session.days.map((day) => {
+          const proposals = Object.values(session.proposals).filter((proposal) => proposal.day === day);
+          const leaderId = proposals.length
+            ? maxBy(proposals, (proposal) => proposal.voting_points * 1000 + proposal.supporters.length)?.id ?? ""
+            : "";
+          return (
+            <article className={`day rush-day rush-day-${day}`} key={day}>
+              <header>
+                <h3>{titleCase(day)}</h3>
+                {leaderId && <span className="locked-label">★ Leader</span>}
+              </header>
+              {proposals.map((proposal) => {
+                const frozenUntil = session.realtime_freeze_until[proposal.id] ?? 0;
+                const frozenSeconds = Math.max(0, Math.ceil(frozenUntil - now));
+                const isFrozen = frozenSeconds > 0;
+                const meal = meals[proposal.meal_id];
+                const streak = session.realtime_stats.hearts_by_proposal[proposal.id] ?? 0;
+                const bursts = heartBursts.filter((burst) => burst.proposalId === proposal.id);
+                const cookCommitted = proposal.chef_volunteers.includes(playerId);
+                const cleanCommitted = proposal.cleanup_volunteers.includes(playerId);
+                return (
+                  <div className={proposal.id === leaderId ? "rush-card leader" : "rush-card"} key={proposal.id}>
+                    {proposal.id === leaderId && (
+                      <>
+                        <span className="rush-leader-rank">1</span>
+                        <span className="rush-leader-badge">★ Leader</span>
+                      </>
+                    )}
+                    <div className="rush-card-top">
+                      <div className="proposal-main">
+                        <span className="meal-emoji">{meal?.emoji}</span>
+                        <div>
+                          <strong>{meal?.name}</strong>
+                          <small>by {proposal.owners.map((id) => session.players[id]?.name).join(" + ")}</small>
+                        </div>
+                      </div>
+                      <b className="proposal-score">
+                        <img src={uiAssets.votingPoint} alt="" aria-hidden="true" />
+                        {proposal.voting_points}
+                      </b>
+                    </div>
+                    {streak >= 3 && bursts.length > 0 && <div className="rush-streak">Heart streak x{streak}</div>}
+                    {bursts.length > 0 && (
+                      <div className="heart-burst" aria-hidden="true">
+                        {bursts.map((burst, index) => (
+                          <span
+                            key={burst.id}
+                            style={{ "--burst-x": `${heartBurstOffsets[index % heartBurstOffsets.length]}px` } as React.CSSProperties}
+                          >
+                            ♥
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <div className="rush-actions">
+                      <button
+                        className="rush-icon-button rush-heart"
+                        disabled={!rushHasStarted || isFrozen}
+                        aria-label="Heart this meal"
+                        title="Heart"
+                        onClick={() => handleHeart(proposal.id)}
+                      >
+                        <Heart size={30} fill="currentColor" aria-hidden="true" />
+                      </button>
+                      <button
+                        className="rush-icon-button rush-freeze"
+                        disabled={!rushHasStarted || usedFreeze || isFrozen}
+                        aria-label={isFrozen ? `Frozen for ${frozenSeconds} seconds` : usedFreeze ? "Freeze already used" : "Freeze this meal"}
+                        title={isFrozen ? `Frozen ${frozenSeconds}s` : usedFreeze ? "Freeze used" : "Freeze"}
+                        onClick={() => onFreeze(proposal.id)}
+                      >
+                        <Snowflake size={22} aria-hidden="true" />
+                        {(isFrozen || usedFreeze) && <span>{isFrozen ? frozenSeconds : "✓"}</span>}
+                      </button>
+                      <button
+                        className={cookCommitted ? "rush-icon-button rush-chore active" : "rush-icon-button rush-chore"}
+                        disabled={!rushHasStarted}
+                        aria-label={cookCommitted ? "Stop cooking this meal" : "Cook this meal"}
+                        title={cookCommitted ? "Un-cook" : "Cook"}
+                        aria-pressed={cookCommitted}
+                        onClick={() => onPlayCard({ card: "ILL_COOK", proposal_id: proposal.id })}
+                      >
+                        <CookingPot size={22} aria-hidden="true" />
+                      </button>
+                      <button
+                        className={cleanCommitted ? "rush-icon-button rush-chore active" : "rush-icon-button rush-chore"}
+                        disabled={!rushHasStarted}
+                        aria-label={cleanCommitted ? "Stop cleaning this meal" : "Clean this meal"}
+                        title={cleanCommitted ? "Un-clean" : "Clean"}
+                        aria-pressed={cleanCommitted}
+                        onClick={() => onPlayCard({ card: "ILL_CLEAN", proposal_id: proposal.id })}
+                      >
+                        <Sparkles size={22} aria-hidden="true" />
+                      </button>
+                    </div>
+                    {(proposal.chef_volunteers.length > 0 || proposal.cleanup_volunteers.length > 0) && (
+                      <div className="volunteer-line">
+                        {proposal.chef_volunteers.length > 0 && <span>Chef: {proposal.chef_volunteers.map((id) => session.players[id]?.name).join(", ")}</span>}
+                        {proposal.cleanup_volunteers.length > 0 && <span>Cleanup: {proposal.cleanup_volunteers.map((id) => session.players[id]?.name).join(", ")}</span>}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </article>
+          );
+        })}
+      </div>
+
+      {session.turn_log.length > 0 && (
+        <div className="turn-log rush-log">
+          {session.turn_log.slice(0, 5).map((entry, index) => (
+            <p key={`${entry}-${index}`}>{entry}</p>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function DayColumn({
   day,
   session,
@@ -1643,6 +1935,13 @@ function FinalForkcast({ session, meals }: { session: Session; meals: Record<str
             <p key={ruleId}>
               General Assembly Exception: {session.rules.find((rule) => rule.id === ruleId)?.label ?? ruleId}
             </p>
+          ))}
+        </div>
+      )}
+      {session.realtime_stats.awards.length > 0 && (
+        <div className="rush-awards">
+          {session.realtime_stats.awards.map((award) => (
+            <p key={award}>{award}</p>
           ))}
         </div>
       )}
