@@ -1,4 +1,4 @@
-import { Bot, Check, ChevronRight, CookingPot, FastForward, Info, Minus, Plus, Sparkles, Users } from "lucide-react";
+import { Bot, Check, ChevronLeft, ChevronRight, CookingPot, FastForward, Info, Minus, Plus, Save, Sparkles, Users } from "lucide-react";
 import QRCode from "qrcode";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -7,13 +7,45 @@ import { connectSessionSocket } from "./api/websocket";
 import { PlayerAvatar } from "./components/PlayerAvatar";
 import { VotingPoints } from "./components/VotingPoints";
 import type { Meal, Proposal, SchoolMenu, Session } from "./game/gameTypes";
+import { uiAssets } from "./uiAssets";
 
 const titleCase = (value: string) => value.slice(0, 1).toUpperCase() + value.slice(1);
+const SAVED_WEEKS_KEY = "forkcast.savedWeeks";
 const SCHOOL_MENU_URL = "https://menu.matildaplatform.com/meals/week/6752f62a2554115c468f8cb8_forskola-skola";
 const defaultCrewLabels = { cook: "Cook", clean: "Cleaner" };
 const defaultDayStatusLabels = { today: "Today", reserved: "Reserved", leading: "Leading", open: "Open" };
 const defaultNutritionLabels = { calories: "cals", protein: "prots" };
 const defaultStatusLabels = { mock: "Mock demo", live: "Updates live" };
+
+function getIsoWeek(date = new Date()) {
+  const normalized = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const day = normalized.getUTCDay() || 7;
+  normalized.setUTCDate(normalized.getUTCDate() + 4 - day);
+  const yearStart = new Date(Date.UTC(normalized.getUTCFullYear(), 0, 1));
+  const week = Math.ceil(((normalized.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+  return { year: normalized.getUTCFullYear(), week };
+}
+
+function getDefaultWeekOffset(date = new Date()) {
+  return date.getDay() === 0 ? 1 : 0;
+}
+
+function getDisplayWeek(weekOffset = getDefaultWeekOffset(), date = new Date()) {
+  const target = new Date(date);
+  target.setDate(target.getDate() + weekOffset * 7);
+  const { year, week } = getIsoWeek(target);
+  const day = target.getDay() || 7;
+  const start = new Date(target);
+  start.setDate(target.getDate() - day + 1);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+  return { year, week, start, end };
+}
+
+function formatShortDateRange(start: Date, end: Date) {
+  const formatter = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" });
+  return `${formatter.format(start)} - ${formatter.format(end)}`;
+}
 
 const menuThemes = [
   {
@@ -388,6 +420,10 @@ export default function App() {
           <div className="brand-mark">
             <CookingPot size={30} />
           </div>
+          <div className="brand-sparkles" aria-hidden="true">
+            <img src={uiAssets.sparkle} alt="" />
+            <img src={uiAssets.heart} alt="" />
+          </div>
           <p className="eyebrow">Weekly Dinner Draft</p>
           <h1>Forkcast</h1>
           <p className="intro">Create a Sunday planning game, join from phones, and leave with dinner handled.</p>
@@ -491,6 +527,12 @@ export default function App() {
               }
               if (next.phase === "SECRET_PLACEMENT") {
                 next = await api.placeMeals(session.id, playerId, placements);
+                if (next.phase === "SECRET_PLACEMENT" && hasSimulatedPlayers) {
+                  next = await api.simulateNext(session.id);
+                }
+              }
+              if (next.phase === "REVEAL") {
+                next = await api.continueReveal(session.id);
               }
               return next;
             })
@@ -608,6 +650,7 @@ function DisplayScreen({
   );
   const [activeIndex, setActiveIndex] = useState(0);
   const [selectedDay, setSelectedDay] = useState("");
+  const [displayWeekOffset, setDisplayWeekOffset] = useState(() => getDefaultWeekOffset());
 
   const advanceTheme = () => setActiveIndex((current) => (current + 1) % activeMenuThemes.length);
 
@@ -624,6 +667,10 @@ function DisplayScreen({
 
   const theme = forcedTheme ?? activeMenuThemes[activeIndex] ?? menuThemes[0];
   const today = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+  const defaultWeekOffset = getDefaultWeekOffset();
+  const displayWeek = getDisplayWeek(displayWeekOffset);
+  const displayWeekLabel = `Week ${displayWeek.week} · ${displayWeek.year}`;
+  const displayWeekRange = formatShortDateRange(displayWeek.start, displayWeek.end);
   const dayLabel = (day: string) => theme.dayNames?.[day] ?? titleCase(day);
 
   if (!session) {
@@ -692,6 +739,23 @@ function DisplayScreen({
             <strong>{session.join_code}</strong>
           </div>
         </header>
+
+        <div className="display-week-nav" aria-label="Displayed week">
+          <button type="button" onClick={() => setDisplayWeekOffset((current) => current - 1)}>
+            <ChevronLeft size={18} /> Previous Week
+          </button>
+          <div>
+            <strong>{displayWeekLabel}</strong>
+            <span>{displayWeekRange}</span>
+            {defaultWeekOffset > 0 && displayWeekOffset === defaultWeekOffset && <small>Planning week</small>}
+          </div>
+          <button type="button" onClick={() => setDisplayWeekOffset(0)} disabled={displayWeekOffset === 0}>
+            Current Week
+          </button>
+          <button type="button" onClick={() => setDisplayWeekOffset((current) => current + 1)}>
+            Next Week <ChevronRight size={18} />
+          </button>
+        </div>
 
         <div className="display-ornament" aria-hidden="true">
           <span />
@@ -1284,7 +1348,7 @@ function DayProposals({
           <span>{meals[proposal.meal_id]?.emoji}</span>
           <strong>{meals[proposal.meal_id]?.name}</strong>
           <small>{proposal.owners.map((id) => session.players[id]?.name).join(" + ")}</small>
-          <b>{proposal.voting_points}</b>
+          <b><img src={uiAssets.votingPoint} alt="" aria-hidden="true" />{proposal.voting_points}</b>
         </div>
       ))}
     </article>
@@ -1337,9 +1401,10 @@ function ProposalCard({
         >
           <Minus size={16} />
         </button>
-        <strong className="proposal-score">{proposal.voting_points}</strong>
+        <strong className="proposal-score"><img src={uiAssets.votingPoint} alt="" aria-hidden="true" />{proposal.voting_points}</strong>
         <button disabled={disabled} aria-label="Support proposal" onClick={() => onVote(proposal.id, "support")}>
-          <Plus size={16} />
+          <img className="heart-icon" src={uiAssets.heart} alt="" aria-hidden="true" />
+          <Plus size={14} />
         </button>
       </div>
       <div className="chore-actions">
@@ -1376,10 +1441,78 @@ function ProposalCard({
 }
 
 function FinalForkcast({ session, meals }: { session: Session; meals: Record<string, Meal> }) {
+  const { year, week } = getDisplayWeek();
+  const savedWeekId = `${year}-W${String(week).padStart(2, "0")}`;
+  const [saved, setSaved] = useState(() => {
+    const savedWeeks = JSON.parse(localStorage.getItem(SAVED_WEEKS_KEY) ?? "{}") as Record<string, unknown>;
+    return Boolean(savedWeeks[savedWeekId]);
+  });
+  const [saveStatus, setSaveStatus] = useState("");
+
+  function buildLocalSavedWeek(savedAt = new Date().toISOString()) {
+    return {
+      id: savedWeekId,
+      saved_at: savedAt,
+      session_id: session.id,
+      join_code: session.join_code,
+      week,
+      year,
+      days: session.days,
+      plan: Object.fromEntries(
+        session.days.map((day) => {
+          const entry = session.week[day];
+          return [
+            day,
+            entry
+              ? {
+                  meal_id: entry.meal_id,
+                  meal_name: meals[entry.meal_id]?.name ?? entry.meal_id,
+                  meal_emoji: meals[entry.meal_id]?.emoji ?? "",
+                  chef: entry.chef.map((id) => session.players[id]?.name ?? id),
+                  cleanup: entry.cleanup.map((id) => session.players[id]?.name ?? id),
+                  rule_exceptions: entry.rule_exceptions
+                }
+              : null
+          ];
+        })
+      ),
+      rule_overrides: session.rule_overrides
+    };
+  }
+
+  function cacheSavedWeek(savedWeek: unknown) {
+    const savedWeeks = JSON.parse(localStorage.getItem(SAVED_WEEKS_KEY) ?? "{}") as Record<string, unknown>;
+    savedWeeks[savedWeekId] = savedWeek;
+    localStorage.setItem(SAVED_WEEKS_KEY, JSON.stringify(savedWeeks));
+  }
+
+  async function saveWeek() {
+    setSaveStatus("");
+    try {
+      const savedWeek = await api.saveWeek(session.id, year, week);
+      cacheSavedWeek(savedWeek);
+      setSaveStatus("Saved to Forkcast server");
+    } catch (err) {
+      cacheSavedWeek(buildLocalSavedWeek());
+      setSaveStatus("Saved on this phone only");
+    }
+    setSaved(true);
+  }
+
   return (
     <section className="stage final">
-      <p className="eyebrow">The Forkcast Is In</p>
-      <h2>Dinner is decided</h2>
+      <div className="final-header">
+        <div>
+          <p className="eyebrow">The Forkcast Is In</p>
+          <h2>Dinner is decided</h2>
+          <p className="week-badge">Week {week} · {year}</p>
+        </div>
+        <button className={saved ? "save-week-button saved" : "save-week-button"} onClick={saveWeek}>
+          {saved ? <Check size={18} /> : <Save size={18} />}
+          {saved ? "Saved" : "Save Week"}
+        </button>
+        {saveStatus && <p className="save-status">{saveStatus}</p>}
+      </div>
       {session.rule_overrides.length > 0 && (
         <div className="turn-log">
           {session.rule_overrides.map((ruleId) => (

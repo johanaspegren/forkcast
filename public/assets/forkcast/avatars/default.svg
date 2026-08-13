@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Player avatar frame">
+  <defs>
+    <linearGradient id="avatarFrame" x1="10" x2="54" y1="8" y2="58">
+      <stop offset="0" stop-color="#35d6ff"/>
+      <stop offset=".5" stop-color="#7248ff"/>
+      <stop offset="1" stop-color="#ff2f7d"/>
+    </linearGradient>
+  </defs>
+  <circle cx="32" cy="32" r="30" fill="url(#avatarFrame)"/>
+  <circle cx="32" cy="32" r="24" fill="#fff7d9"/>
+  <circle cx="24" cy="28" r="4" fill="#24302f"/>
+  <circle cx="40" cy="28" r="4" fill="#24302f"/>
+  <path fill="none" stroke="#ff5f7c" stroke-linecap="round" stroke-width="4" d="M23 39c5 5 13 5 18 0"/>
+</svg>

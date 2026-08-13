@@ -29,6 +29,10 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+# Runtime
+.forkcast-ports.json
+.forkcast-data/
+
 # OS
 .DS_Store
 Thumbs.db

@@ -16,6 +16,7 @@ from backend.forkcast.game.models import (
     UnlockDayRequest,
     VoteRequest,
 )
+from backend.forkcast.game.saved_weeks import SaveWeekRequest, SavedWeek, get_saved_week, list_saved_weeks, save_week
 
 router = APIRouter(prefix="/api")
 
@@ -33,6 +34,22 @@ def meals() -> list[dict]:
 @router.get("/school-menu")
 def school_menu(url: str = Query(...)) -> dict:
     return fetch_matilda_school_menu(url)
+
+
+@router.get("/saved-weeks")
+def saved_weeks() -> list[SavedWeek]:
+    return list_saved_weeks()
+
+
+@router.get("/saved-weeks/{saved_week_id}")
+def saved_week(saved_week_id: str) -> SavedWeek:
+    return get_saved_week(saved_week_id)
+
+
+@router.post("/saved-weeks")
+def save_completed_week(request: SaveWeekRequest) -> SavedWeek:
+    session = engine.get_session(request.session_id)
+    return save_week(session, request)
 
 
 @router.post("/sessions")

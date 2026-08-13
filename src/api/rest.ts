@@ -1,4 +1,4 @@
-import type { SchoolMenu, Session } from "../game/gameTypes";
+import type { SavedWeek, SchoolMenu, Session } from "../game/gameTypes";
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch(path, {
@@ -18,6 +18,13 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 export const api = {
   meals: () => request("/api/meals"),
   schoolMenu: (url: string) => request<SchoolMenu>(`/api/school-menu?url=${encodeURIComponent(url)}`),
+  savedWeeks: () => request<SavedWeek[]>("/api/saved-weeks"),
+  getSavedWeek: (savedWeekId: string) => request<SavedWeek>(`/api/saved-weeks/${savedWeekId}`),
+  saveWeek: (sessionId: string, year: number, week: number) =>
+    request<SavedWeek>("/api/saved-weeks", {
+      method: "POST",
+      body: JSON.stringify({ session_id: sessionId, year, week })
+    }),
   createSession: (maxSelectedMeals = 3) =>
     request<Session>("/api/sessions", {
       method: "POST",

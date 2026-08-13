@@ -109,3 +109,24 @@ export type SchoolMenu = {
   distributor: string;
   days: SchoolMenuDay[];
 };
+
+export type SavedWeekEntry = {
+  meal_id: string;
+  meal_name: string;
+  meal_emoji: string;
+  chef: string[];
+  cleanup: string[];
+  rule_exceptions: string[];
+};
+
+export type SavedWeek = {
+  id: string;
+  saved_at: string;
+  session_id: string;
+  join_code: string;
+  year: number;
+  week: number;
+  days: string[];
+  plan: Record<string, SavedWeekEntry | null>;
+  rule_overrides: string[];
+};

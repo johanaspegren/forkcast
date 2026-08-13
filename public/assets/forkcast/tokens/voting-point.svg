@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Voting Point token">
+  <defs>
+    <radialGradient id="coinGlow" cx="32%" cy="24%" r="72%">
+      <stop offset="0" stop-color="#fff7a8"/>
+      <stop offset="0.4" stop-color="#ffd33d"/>
+      <stop offset="1" stop-color="#f08a00"/>
+    </radialGradient>
+    <linearGradient id="shine" x1="12" x2="52" y1="8" y2="42">
+      <stop offset="0" stop-color="#fff" stop-opacity=".9"/>
+      <stop offset=".52" stop-color="#fff" stop-opacity=".08"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <circle cx="32" cy="32" r="28" fill="url(#coinGlow)" stroke="#b85300" stroke-width="4"/>
+  <circle cx="32" cy="32" r="20" fill="none" stroke="#fff0a6" stroke-width="3"/>
+  <path fill="#7a3400" d="M22 21h11c7 0 11 4 11 10s-4 10-11 10h-4v8h-7V21zm7 6v8h4c3 0 5-1 5-4s-2-4-5-4h-4z"/>
+  <path fill="url(#shine)" d="M12 25c3-11 13-18 25-17 8 1 14 5 18 11-17-4-31-2-43 6z"/>
+</svg>

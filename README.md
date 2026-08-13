@@ -30,10 +30,26 @@ Start the backend:
 npm run backend
 ```
 
+If your preferred default backend port is busy, Forkcast automatically picks the next free one and prints it in the terminal.
+
+To prefer a different starting port before fallback, set `BACKEND_PORT`:
+
+```bash
+BACKEND_PORT=8010 npm run backend
+```
+
 Start the frontend in another terminal:
 
 ```bash
 npm run dev
+```
+
+If port 5173 is busy, frontend also automatically picks the next free port.
+
+Frontend reads backend port from the latest backend runtime file automatically. If needed, you can still force proxy target manually:
+
+```bash
+BACKEND_PORT=8010 npm run dev
 ```
 
 Open:
@@ -93,10 +109,10 @@ npm run build
 npm run serve
 ```
 
-If port 8000 is already in use on the Pi, run uvicorn directly on any free port instead, for example 8010:
+If your preferred backend port is busy on the Pi, `npm run serve` automatically falls forward to a free one. To choose the starting preference:
 
 ```bash
-.venv/bin/python -m uvicorn backend.forkcast.main:app --host 0.0.0.0 --port 8010
+BACKEND_PORT=8010 npm run serve
 ```
 
 Open from phones on the same Wi-Fi:
