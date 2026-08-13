@@ -17,6 +17,7 @@ Core tone:
 - Mobile-first, touch-first, fast to understand.
 - Clear enough that a player can join mid-session and know what to do.
 - Avoid a generic SaaS/dashboard look.
+- a little fun and smart works, as in popcult-references
 
 ## Existing Tech Constraints
 
@@ -466,14 +467,9 @@ Use a distinct game identity:
 - App name: Forkcast
 - Theme: weekly dinner draft / family negotiation game
 - Visual language: meal cards, day lanes, table tokens, Voting Points, avatars
-- Corners: mostly round and friendly, but keep layout containers disciplined. Use 8px-16px for cards and controls; circular tokens/avatars are encouraged.
+- Corners: 8px or less for cards and controls
 - Text: compact and scannable on phone
 - Buttons: use icons where possible, especially plus, minus, check, users, bot, lock, unlock, chef/cooking, fast-forward
-- Mood: happy, colorful, glossy casual-game energy. The reference direction is bright mobile board games with saturated blues, purples, yellows, reds, rounded controls, coin/token counters, sticker-like avatars, and occasional hearts.
-- Use gloss sparingly: highlights on primary buttons, Voting Point tokens, meal cards, player avatars, and important state badges. Avoid making every surface shiny.
-- Hearts can be used as a support/favourite visual motif, especially for favourites, approved meals, family love, or consensus. Do not use hearts for destructive/downvote actions.
-- The board should feel like a tabletop game board: weekday lanes, meal cards, player pieces, and Voting Point chips should read as touchable pieces.
-- Backgrounds may use subtle radial/ray energy or soft patterned game backdrops, but must not compete with cards or text.
 
 Avoid:
 
@@ -483,44 +479,6 @@ Avoid:
 - Overly dark UI
 - Tiny tap targets
 - Controls that move around as text changes
-- Casino or gambling styling. Coins are Voting Points, not money.
-- Fake unreadable UI text inside generated art. All real labels should be actual HTML text.
-
-### Replaceable Icons and Visual Assets
-
-Any custom icons, stickers, avatars, food illustrations, backgrounds, or glossy visual pieces should be easy to replace later.
-
-Preferred asset contract:
-
-```text
-src/ui/lovable/assets/
-  avatars/
-  meals/
-  tokens/
-  backgrounds/
-  badges/
-```
-
-Preferred code contract:
-
-```ts
-export const uiAssets = {
-  votingPoint: "/src/ui/lovable/assets/tokens/voting-point.svg",
-  heart: "/src/ui/lovable/assets/badges/heart.svg",
-  defaultAvatar: "/src/ui/lovable/assets/avatars/default.svg",
-  backgroundPattern: "/src/ui/lovable/assets/backgrounds/game-pattern.svg"
-};
-```
-
-Rules:
-
-- Do not embed large generated SVGs directly inside React components.
-- Do not hard-code asset paths throughout the UI.
-- Put replaceable art behind a small `uiAssets` map or `AssetIcon` component.
-- Use `lucide-react` for common functional icons: plus, minus, check, lock, unlock, users, bot, info, fast-forward.
-- Use custom replaceable assets only for game identity: Voting Point token, heart/favourite badge, meal stickers, background pattern, player avatar frames.
-- If using raster art, prefer PNG or WebP with transparent backgrounds for stickers and tokens.
-- Keep emoji fallback support for meals and players, because the backend currently stores emoji avatars and meal emoji.
 
 Mobile layout guidance:
 
@@ -606,10 +564,4 @@ The imported UI is ready when:
 
 ## Prompt to Paste into Lovable
 
-Build a React + TypeScript mobile-first game UI for Forkcast, a family dinner planning game. Use the design brief, data model, props contract, screens, and acceptance criteria from this document. The UI must render from a `Session` object and call injected callbacks for all actions. Do not create a backend and do not hard-code fetch calls.
-
-Visual style: happy colorful casual mobile board game, saturated blues/purples/yellows/reds, round friendly edges, glossy highlights on buttons/tokens/cards, meal cards, weekday lanes, Voting Point chips, sticker-like avatars, hearts for favourites/support/consensus, warm family dinner energy. Keep it readable and not dark. Avoid casino/gambling styling.
-
-Asset requirement: any custom icons, food stickers, player avatar frames, token art, hearts, badges, or background visuals must be centralized in an `assets` folder and referenced through a small `uiAssets` map or `AssetIcon` component so they are easy to replace later. Use `lucide-react` for functional icons. Keep emoji fallbacks for meals and players.
-
-Produce a polished, playful phone-game interface with components that can be copied into `src/ui/lovable/` in a Vite React app.
+Build a React + TypeScript mobile-first game UI for Forkcast, a family dinner planning game. Use the design brief, data model, props contract, screens, and acceptance criteria from this document. The UI must render from a `Session` object and call injected callbacks for all actions. Do not create a backend and do not hard-code fetch calls. Produce a polished, playful phone-game interface with components that can be copied into `src/ui/lovable/` in a Vite React app.

@@ -6,7 +6,7 @@ import { api } from "./api/rest";
 import { connectSessionSocket } from "./api/websocket";
 import { PlayerAvatar } from "./components/PlayerAvatar";
 import { VotingPoints } from "./components/VotingPoints";
-import type { Meal, Proposal, SchoolMenu, Session } from "./game/gameTypes";
+import type { Meal, Proposal, SavedWeek, SchoolMenu, Session } from "./game/gameTypes";
 import { uiAssets } from "./uiAssets";
 
 const titleCase = (value: string) => value.slice(0, 1).toUpperCase() + value.slice(1);
@@ -45,6 +45,78 @@ function getDisplayWeek(weekOffset = getDefaultWeekOffset(), date = new Date()) 
 function formatShortDateRange(start: Date, end: Date) {
   const formatter = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" });
   return `${formatter.format(start)} - ${formatter.format(end)}`;
+}
+
+function weekId(year: number, week: number) {
+  return `${year}-W${String(week).padStart(2, "0")}`;
+}
+
+function parseWeekParam(value: string | null, fallbackYear: number) {
+  if (!value) return null;
+  const isoMatch = value.match(/^(\d{4})-?W?(\d{1,2})$/i);
+  if (isoMatch) {
+    return { year: Number(isoMatch[1]), week: Number(isoMatch[2]) };
+  }
+  const week = Number(value);
+  if (Number.isInteger(week) && week >= 1 && week <= 53) {
+    return { year: fallbackYear, week };
+  }
+  return null;
+}
+
+function slugId(value: string) {
+  const slug = value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  return slug || "unassigned";
+}
+
+function savedWeekToSession(savedWeek: SavedWeek): Session {
+  const players: Session["players"] = {};
+  const ensurePlayer = (name: string) => {
+    const id = slugId(name);
+    if (!players[id]) {
+      players[id] = { id, name, avatar: "🍽️", favourite_meals: [], simulated: false };
+    }
+    return id;
+  };
+
+  const week = Object.fromEntries(
+    savedWeek.days.map((day) => {
+      const entry = savedWeek.plan[day];
+      return [
+        day,
+        entry
+          ? {
+              meal_id: entry.meal_id,
+              chef: entry.chef.map(ensurePlayer),
+              cleanup: entry.cleanup.map(ensurePlayer),
+              rule_exceptions: entry.rule_exceptions
+            }
+          : null
+      ];
+    })
+  );
+
+  return {
+    id: savedWeek.id,
+    join_code: savedWeek.id,
+    phase: "COMPLETE",
+    days: savedWeek.days,
+    players,
+    player_state: {},
+    proposals: {},
+    week,
+    rules: [],
+    turn_order: Object.keys(players),
+    current_turn_index: 0,
+    turn_log: [`Saved Forkcast loaded for Week ${savedWeek.week}.`],
+    max_players: Math.max(4, Object.keys(players).length),
+    starting_voting_points: 10,
+    max_selected_meals: 3,
+    max_action_cards_played: 2,
+    rule_overrides: savedWeek.rule_overrides,
+    general_assembly: {},
+    general_assembly_threshold: 4
+  };
 }
 
 const menuThemes = [
@@ -313,6 +385,7 @@ export default function App() {
   const isDisplayMode = window.location.pathname.startsWith("/display");
   const isMockDisplay = isDisplayMode && (searchParams.get("mock") === "1" || searchParams.get("session") === "mock");
   const sessionId = searchParams.get("session");
+  const requestedWeek = parseWeekParam(searchParams.get("week"), getDisplayWeek().year);
   const [meals, setMeals] = useState<Meal[]>(MOCK_DISPLAY_MEALS);
   const [schoolMenu, setSchoolMenu] = useState<SchoolMenu | null>(null);
   const [session, setSession] = useState<Session | null>(() => isMockDisplay ? MOCK_WEEKLY_SESSION : null);
@@ -331,8 +404,13 @@ export default function App() {
       if (isDisplayMode) {
         api.getSession(sessionId).then(setSession).catch((err) => setError(err.message));
       }
+    } else if (isDisplayMode) {
+      const selectedWeek = requestedWeek ?? getDisplayWeek();
+      api.getSavedWeek(weekId(selectedWeek.year, selectedWeek.week))
+        .then((savedWeek) => setSession(savedWeekToSession(savedWeek)))
+        .catch(() => undefined);
     }
-  }, [isDisplayMode, isMockDisplay, sessionId]);
+  }, [isDisplayMode, isMockDisplay, requestedWeek?.week, requestedWeek?.year, sessionId]);
 
   useEffect(() => {
     if (!session?.id || session.id === MOCK_WEEKLY_SESSION.id) return;
@@ -351,16 +429,18 @@ export default function App() {
 
   if (isDisplayMode) {
     return (
-      <DisplayScreen
-        session={session}
-        meals={mealById}
-        joinCode={joinCode}
-        error={error}
-        onJoinCodeChange={setJoinCode}
-        onLoad={() => run(() => api.getSession(joinCode))}
-        onLoadMock={() => setSession(MOCK_WEEKLY_SESSION)}
-      />
-    );
+        <DisplayScreen
+          session={session}
+          meals={mealById}
+          joinCode={joinCode}
+          error={error}
+          onJoinCodeChange={setJoinCode}
+          onLoad={() => run(() => api.getSession(joinCode))}
+          onLoadMock={() => setSession(MOCK_WEEKLY_SESSION)}
+          onSavedWeekLoad={setSession}
+          requestedWeek={requestedWeek}
+        />
+      );
   }
 
   async function run(action: () => Promise<Session>) {
@@ -634,7 +714,9 @@ function DisplayScreen({
   error,
   onJoinCodeChange,
   onLoad,
-  onLoadMock
+  onLoadMock,
+  onSavedWeekLoad,
+  requestedWeek
 }: {
   session: Session | null;
   meals: Record<string, Meal>;
@@ -643,14 +725,24 @@ function DisplayScreen({
   onJoinCodeChange: (value: string) => void;
   onLoad: () => void;
   onLoadMock: () => void;
+  onSavedWeekLoad: (session: Session | null) => void;
+  requestedWeek: { year: number; week: number } | null;
 }) {
+  const displayParams = new URLSearchParams(window.location.search);
+  const isLiveSessionDisplay = Boolean(displayParams.get("session"));
+  const isSavedMockDisplay = displayParams.get("mock") === "1" || displayParams.get("session") === "mock";
   const requestedTheme = new URLSearchParams(window.location.search).get("theme");
   const forcedTheme = menuThemes.find(
     (menuTheme) => menuTheme.className === requestedTheme || menuTheme.className === `theme-${requestedTheme}`
   );
   const [activeIndex, setActiveIndex] = useState(0);
   const [selectedDay, setSelectedDay] = useState("");
-  const [displayWeekOffset, setDisplayWeekOffset] = useState(() => getDefaultWeekOffset());
+  const [displayWeekOffset, setDisplayWeekOffset] = useState(() => {
+    if (!requestedWeek) return getDefaultWeekOffset();
+    const currentWeek = getDisplayWeek(0);
+    return requestedWeek.week - currentWeek.week + (requestedWeek.year - currentWeek.year) * 52;
+  });
+  const [savedWeekError, setSavedWeekError] = useState("");
 
   const advanceTheme = () => setActiveIndex((current) => (current + 1) % activeMenuThemes.length);
 
@@ -673,13 +765,45 @@ function DisplayScreen({
   const displayWeekRange = formatShortDateRange(displayWeek.start, displayWeek.end);
   const dayLabel = (day: string) => theme.dayNames?.[day] ?? titleCase(day);
 
+  async function loadSavedWeekForOffset(nextOffset: number) {
+    setDisplayWeekOffset(nextOffset);
+    if (isLiveSessionDisplay || isSavedMockDisplay) return;
+    setSavedWeekError("");
+    try {
+      const selectedWeek = getDisplayWeek(nextOffset);
+      const savedWeek = await api.getSavedWeek(weekId(selectedWeek.year, selectedWeek.week));
+      onSavedWeekLoad(savedWeekToSession(savedWeek));
+    } catch (err) {
+      onSavedWeekLoad(null);
+      setSavedWeekError(`No saved Forkcast for Week ${getDisplayWeek(nextOffset).week}.`);
+    }
+  }
+
   if (!session) {
     return (
       <main className="display-shell display-setup">
         <section className="display-menu">
           <p className="display-kicker">Hallway menu</p>
           <h1>Forkcast</h1>
-          <p className="display-note">Load a session and leave this screen open on the tablet.</p>
+          <p className="display-note">
+            {savedWeekError || `No saved Forkcast found for ${displayWeekLabel}. Load a live session or save this week from a phone.`}
+          </p>
+          <div className="display-week-nav" aria-label="Displayed week">
+            <button type="button" onClick={() => loadSavedWeekForOffset(displayWeekOffset - 1)}>
+              <ChevronLeft size={18} /> Previous Week
+            </button>
+            <div>
+              <strong>{displayWeekLabel}</strong>
+              <span>{displayWeekRange}</span>
+              {defaultWeekOffset > 0 && displayWeekOffset === defaultWeekOffset && <small>Planning week</small>}
+            </div>
+            <button type="button" onClick={() => loadSavedWeekForOffset(0)} disabled={displayWeekOffset === 0}>
+              Current Week
+            </button>
+            <button type="button" onClick={() => loadSavedWeekForOffset(displayWeekOffset + 1)}>
+              Next Week <ChevronRight size={18} />
+            </button>
+          </div>
           <div className="display-load">
             <input value={joinCode} onChange={(event) => onJoinCodeChange(event.target.value)} placeholder="Session ID" />
             <button className="primary" onClick={onLoad}>Load Menu</button>
@@ -741,7 +865,7 @@ function DisplayScreen({
         </header>
 
         <div className="display-week-nav" aria-label="Displayed week">
-          <button type="button" onClick={() => setDisplayWeekOffset((current) => current - 1)}>
+          <button type="button" onClick={() => loadSavedWeekForOffset(displayWeekOffset - 1)}>
             <ChevronLeft size={18} /> Previous Week
           </button>
           <div>
@@ -749,10 +873,10 @@ function DisplayScreen({
             <span>{displayWeekRange}</span>
             {defaultWeekOffset > 0 && displayWeekOffset === defaultWeekOffset && <small>Planning week</small>}
           </div>
-          <button type="button" onClick={() => setDisplayWeekOffset(0)} disabled={displayWeekOffset === 0}>
+          <button type="button" onClick={() => loadSavedWeekForOffset(0)} disabled={displayWeekOffset === 0}>
             Current Week
           </button>
-          <button type="button" onClick={() => setDisplayWeekOffset((current) => current + 1)}>
+          <button type="button" onClick={() => loadSavedWeekForOffset(displayWeekOffset + 1)}>
             Next Week <ChevronRight size={18} />
           </button>
         </div>
@@ -1444,8 +1568,8 @@ function FinalForkcast({ session, meals }: { session: Session; meals: Record<str
   const { year, week } = getDisplayWeek();
   const savedWeekId = `${year}-W${String(week).padStart(2, "0")}`;
   const [saved, setSaved] = useState(() => {
-    const savedWeeks = JSON.parse(localStorage.getItem(SAVED_WEEKS_KEY) ?? "{}") as Record<string, unknown>;
-    return Boolean(savedWeeks[savedWeekId]);
+    const savedWeeks = JSON.parse(localStorage.getItem(SAVED_WEEKS_KEY) ?? "{}") as Record<string, { session_id?: string }>;
+    return savedWeeks[savedWeekId]?.session_id === session.id;
   });
   const [saveStatus, setSaveStatus] = useState("");
 

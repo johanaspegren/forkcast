@@ -13,3 +13,5 @@ Original prompt: oh, we could perhaps do these changes in the code as well? as a
 - Verified `/display?mock=1` at tablet size: defaulted to Week 33 · 2026 for August 13, 2026, Next Week changed label to Week 34 · 2026, and Previous Week returned to Week 33.
 - Adjusted week defaults for Sunday planning: Sundays default to the coming ISO week and show a small "Planning week" hint; Current Week still jumps back to the actual current calendar week.
 - Added backend saved-week persistence via `/api/saved-weeks`, stored in `.forkcast-data/saved-weeks.json`. The phone Save Week button now saves to the server first and caches locally as a fallback.
+- Updated `/display` so it can load saved backend dinner plans without a live session id. `/display` loads the default selected week, `/display?week=33` loads that week in the current year, and `/display?week=2026-W33` loads an explicit saved week.
+- Fixed the final screen Save Week button initial state: it now only starts as `Saved` when the local cached saved week belongs to the same session id, not merely because another plan exists for the same week.
