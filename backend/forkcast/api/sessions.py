@@ -13,6 +13,7 @@ from backend.forkcast.game.models import (
     MealSelectionRequest,
     PassTurnRequest,
     PlacementRequest,
+    PlayerActionRequest,
     RealtimeFreezeRequest,
     RealtimeHeartRequest,
     RealtimeOverrideRequest,
@@ -105,6 +106,13 @@ async def simulate_next(session_id: str) -> Session:
 @router.post("/sessions/{session_id}/start")
 async def start_session(session_id: str) -> Session:
     session = engine.start(session_id)
+    await manager.broadcast(session)
+    return session
+
+
+@router.post("/sessions/{session_id}/restart")
+async def restart_session(session_id: str, request: PlayerActionRequest) -> Session:
+    session = engine.restart_session(session_id, request)
     await manager.broadcast(session)
     return session
 

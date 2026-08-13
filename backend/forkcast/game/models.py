@@ -191,6 +191,10 @@ class DeleteSessionRequest(BaseModel):
     player_id: str | None = None
 
 
+class PlayerActionRequest(BaseModel):
+    player_id: str
+
+
 class CardPlayRequest(BaseModel):
     player_id: str
     card: str

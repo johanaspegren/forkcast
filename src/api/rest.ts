@@ -47,6 +47,11 @@ export const api = {
   simulateNext: (sessionId: string) =>
     request<Session>(`/api/sessions/${sessionId}/simulate/next`, { method: "POST" }),
   start: (sessionId: string) => request<Session>(`/api/sessions/${sessionId}/start`, { method: "POST" }),
+  restart: (sessionId: string, playerId: string) =>
+    request<Session>(`/api/sessions/${sessionId}/restart`, {
+      method: "POST",
+      body: JSON.stringify({ player_id: playerId })
+    }),
   selectMeals: (sessionId: string, playerId: string, mealIds: string[]) =>
     request<Session>(`/api/sessions/${sessionId}/meal-selection`, {
       method: "POST",

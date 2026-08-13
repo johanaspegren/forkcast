@@ -20,6 +20,7 @@ from .models import (
     PassTurnRequest,
     PlacementRequest,
     Player,
+    PlayerActionRequest,
     PlayerSession,
     Proposal,
     RealtimeFreezeRequest,
@@ -102,6 +103,35 @@ class GameEngine:
         if admin_id and requested_player_id != admin_id:
             raise HTTPException(status_code=403, detail="Only the session admin can delete this session")
         self.sessions.pop(session_id, None)
+
+    def restart_session(self, session_id: str, request: PlayerActionRequest) -> Session:
+        session = self._require_phase(session_id, GamePhase.COMPLETE)
+        admin_id = next(iter(session.players), None)
+        if request.player_id != admin_id:
+            raise HTTPException(status_code=403, detail="Only the session admin can restart this session")
+        session.phase = GamePhase.MEAL_SELECTION
+        session.week = {day: None for day in session.days}
+        session.proposals = {}
+        session.rules = []
+        session.turn_order = []
+        session.current_turn_index = 0
+        session.turn_log = ["The Forkcast restarted. Pick meals again!"]
+        session.rule_overrides = []
+        session.general_assembly = {}
+        session.realtime_started_at = None
+        session.realtime_ends_at = None
+        session.realtime_freeze_until = {}
+        session.realtime_freezes_used = []
+        session.realtime_override_window = None
+        session.realtime_stats = RealtimeStats()
+        for player_id in session.players:
+            session.player_state[player_id] = PlayerSession(
+                player_id=player_id,
+                voting_points_remaining=session.starting_voting_points,
+                meal_cards=list(MEALS),
+                action_cards=["ILL_COOK", "ILL_CLEAN"],
+            )
+        return self._refresh_rules(session)
 
     def all_meals(self) -> list[Meal]:
         return list(MEALS.values())

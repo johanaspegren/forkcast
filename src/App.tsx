@@ -855,6 +855,7 @@ export default function App() {
           meals={mealById}
           playerId={playerId}
           onReorder={(fromDay, toDay) => run(() => api.reorderWeek(session.id, playerId, fromDay, toDay))}
+          onRestart={() => run(() => api.restart(session.id, playerId))}
         />
       )}
     </main>
@@ -1986,12 +1987,14 @@ function FinalForkcast({
   session,
   meals,
   playerId,
-  onReorder
+  onReorder,
+  onRestart
 }: {
   session: Session;
   meals: Record<string, Meal>;
   playerId: string;
   onReorder: (fromDay: string, toDay: string) => void;
+  onRestart: () => void;
 }) {
   const { year, week } = getDisplayWeek();
   const savedWeekId = `${year}-W${String(week).padStart(2, "0")}`;
@@ -2126,6 +2129,11 @@ function FinalForkcast({
           {saved ? <Check size={18} /> : <Save size={18} />}
           {saved ? "Saved" : "Save Week"}
         </button>
+        {canReorder && (
+          <button className="restart-week-button" onClick={onRestart} type="button">
+            <FastForward size={18} /> Restart
+          </button>
+        )}
         {saveStatus && <p className="save-status">{saveStatus}</p>}
       </div>
       {session.rule_overrides.length > 0 && (
