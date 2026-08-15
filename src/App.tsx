@@ -1,4 +1,5 @@
-import { Bot, Check, ChevronLeft, ChevronRight, CookingPot, FastForward, Heart, Info, Minus, Plus, Save, Snowflake, Sparkles, Users } from "lucide-react";
+import { DndContext, DragEndEvent, DragOverlay, DragStartEvent, MouseSensor, TouchSensor, useDraggable, useDroppable, useSensor, useSensors } from "@dnd-kit/core";
+import { Bot, Check, ChevronLeft, ChevronRight, CookingPot, FastForward, GripVertical, Heart, Info, Minus, Plus, Save, Snowflake, Sparkles, Users } from "lucide-react";
 import QRCode from "qrcode";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -1297,17 +1298,11 @@ function MealPlanning({
   const [filter, setFilter] = useState<"favourites" | "asian" | "vego">("favourites");
   const [pickedMealId, setPickedMealId] = useState("");
   const [pickedFromDay, setPickedFromDay] = useState<string | null>(null);
-  const [touchDrag, setTouchDrag] = useState<{
-    mealId: string;
-    fromDay: string | null;
-    x: number;
-    y: number;
-    active: boolean;
-  } | null>(null);
-  const touchDragStartRef = useRef<{ x: number; y: number } | null>(null);
-  const touchDragRef = useRef<typeof touchDrag>(null);
-  const suppressPlanningClickRef = useRef(false);
-  const [canDrag] = useState(() => window.matchMedia("(pointer: fine)").matches);
+  const [activePlanningDrag, setActivePlanningDrag] = useState<{ mealId: string; fromDay: string | null } | null>(null);
+  const planningSensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 120, tolerance: 8 } })
+  );
   const [assigned, setAssigned] = useState<Record<string, string | null>>(() => {
     const initial = Object.fromEntries(session.days.map((day, index) => [day, state.selected_meals[index] ?? null]));
     return initial as Record<string, string | null>;
@@ -1381,67 +1376,23 @@ function MealPlanning({
     assignMeal(day, pickedMealId);
   }
 
-  function dropTouchMeal(day: string, mealId: string, fromDay: string | null) {
-    if (fromDay) {
-      if (fromDay !== day) moveMeal(fromDay, day);
-      return;
-    }
-    assignMeal(day, mealId);
+  function handlePlanningDragStart(event: DragStartEvent) {
+    const data = event.active.data.current as { mealId?: string; fromDay?: string | null } | undefined;
+    if (!data?.mealId) return;
+    setActivePlanningDrag({ mealId: data.mealId, fromDay: data.fromDay ?? null });
   }
 
-  function finishTouchDrag(clientX: number, clientY: number) {
-    const drag = touchDragRef.current;
-    if (!drag) return;
-    const target = document.elementFromPoint(clientX, clientY)?.closest<HTMLElement>("[data-weekday-slot]");
-    const day = target?.dataset.weekdaySlot;
-    if (day) {
-      dropTouchMeal(day, drag.mealId, drag.fromDay);
+  function handlePlanningDragEnd(event: DragEndEvent) {
+    const data = event.active.data.current as { mealId?: string; fromDay?: string | null } | undefined;
+    const day = String(event.over?.id ?? "").replace("plan-day:", "");
+    if (data?.mealId && event.over?.id && day) {
+      if (data.fromDay) {
+        if (data.fromDay !== day) moveMeal(data.fromDay, day);
+      } else {
+        assignMeal(day, data.mealId);
+      }
     }
-    setTouchDrag(null);
-    touchDragRef.current = null;
-    touchDragStartRef.current = null;
-  }
-
-  function startTouchDrag(event: React.PointerEvent, mealId: string, fromDay: string | null) {
-    if (event.pointerType === "mouse") return;
-    event.currentTarget.setPointerCapture(event.pointerId);
-    touchDragStartRef.current = { x: event.clientX, y: event.clientY };
-    const nextDrag = { mealId, fromDay, x: event.clientX, y: event.clientY, active: false };
-    touchDragRef.current = nextDrag;
-    suppressPlanningClickRef.current = false;
-    setTouchDrag(nextDrag);
-  }
-
-  function moveTouchDrag(event: React.PointerEvent) {
-    const drag = touchDragRef.current;
-    if (!drag) return;
-    const start = touchDragStartRef.current;
-    const movedEnough = start
-      ? Math.abs(event.clientX - start.x) + Math.abs(event.clientY - start.y) > 10
-      : true;
-    if (movedEnough) {
-      event.preventDefault();
-      suppressPlanningClickRef.current = true;
-    }
-    const nextDrag = { ...drag, x: event.clientX, y: event.clientY, active: drag.active || movedEnough };
-    touchDragRef.current = nextDrag;
-    setTouchDrag(nextDrag);
-  }
-
-  function endTouchDrag(event: React.PointerEvent) {
-    const drag = touchDragRef.current;
-    if (!drag) return;
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-    if (drag.active) {
-      event.preventDefault();
-      finishTouchDrag(event.clientX, event.clientY);
-      return;
-    }
-    setTouchDrag(null);
-    touchDragRef.current = null;
-    touchDragStartRef.current = null;
+    setActivePlanningDrag(null);
   }
 
   function submit() {
@@ -1467,53 +1418,38 @@ function MealPlanning({
           </button>
         ))}
       </div>
-      <div className="planning-grid">
-        <div className="meal-rail">
-          {filteredMeals.map((meal) => {
-            const isAssigned = assignedMeals.includes(meal.id);
-            return (
-              <button
-                key={meal.id}
-                className={pickedMealId === meal.id ? "rail-meal picked" : isAssigned ? "rail-meal assigned" : "rail-meal"}
-                draggable={canDrag}
-                onClick={() => {
-                  if (suppressPlanningClickRef.current) {
-                    suppressPlanningClickRef.current = false;
-                    return;
-                  }
-                  pickFromRail(meal.id);
-                }}
-                onDragStart={(event) => event.dataTransfer.setData("text/plain", `meal:${meal.id}`)}
-                onPointerDown={(event) => startTouchDrag(event, meal.id, null)}
-                onPointerMove={moveTouchDrag}
-                onPointerUp={endTouchDrag}
-                onPointerCancel={endTouchDrag}
-              >
-                <span>{meal.emoji}</span>
-                <strong>{meal.name}</strong>
-                <small>{meal.tags.join(" · ")}</small>
-              </button>
-            );
-          })}
-        </div>
-        <div className="weekday-dropzone">
-          {session.days.map((day) => {
-            const mealId = assigned[day];
-            const meal = mealId ? meals[mealId] : null;
-            return (
-              <div
-                key={day}
-                className={pickedMealId && (meal || plannedCount < session.max_selected_meals) ? "weekday-slot ready" : "weekday-slot"}
-                data-weekday-slot={day}
-                onClick={() => placeOnDay(day)}
-                onDragOver={(event) => event.preventDefault()}
-                onDrop={(event) => {
-                  event.preventDefault();
-                  const data = event.dataTransfer.getData("text/plain");
-                  if (data.startsWith("meal:")) assignMeal(day, data.replace("meal:", ""));
-                  if (data.startsWith("day:")) moveMeal(data.replace("day:", ""), day);
-                }}
-              >
+      <DndContext
+        sensors={planningSensors}
+        onDragStart={handlePlanningDragStart}
+        onDragEnd={handlePlanningDragEnd}
+        onDragCancel={() => setActivePlanningDrag(null)}
+      >
+        <div className="planning-grid">
+          <div className="meal-rail">
+            {filteredMeals.map((meal) => {
+              const isAssigned = assignedMeals.includes(meal.id);
+              return (
+                <PlanningRailMeal
+                  key={meal.id}
+                  meal={meal}
+                  isAssigned={isAssigned}
+                  isPicked={pickedMealId === meal.id}
+                  onPick={() => pickFromRail(meal.id)}
+                />
+              );
+            })}
+          </div>
+          <div className="weekday-dropzone">
+            {session.days.map((day) => {
+              const mealId = assigned[day];
+              const meal = mealId ? meals[mealId] : null;
+              return (
+                <PlanningWeekdaySlot
+                  key={day}
+                  day={day}
+                  isReady={Boolean(pickedMealId && (meal || plannedCount < session.max_selected_meals))}
+                  onClick={() => placeOnDay(day)}
+                >
                 <div className="weekday-slot-head">
                   <strong>{titleCase(day)}</strong>
                   {meal && (
@@ -1526,29 +1462,13 @@ function MealPlanning({
                   )}
                 </div>
                 {meal ? (
-                  <div
-                    className={pickedMealId === mealId && pickedFromDay === day ? "slot-meal picked" : "slot-meal"}
-                    draggable={canDrag}
-                    onDragStart={(event) => event.dataTransfer.setData("text/plain", `day:${day}`)}
-                    onPointerDown={(event) => startTouchDrag(event, mealId!, day)}
-                    onPointerMove={moveTouchDrag}
-                    onPointerUp={endTouchDrag}
-                    onPointerCancel={endTouchDrag}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      if (suppressPlanningClickRef.current) {
-                        suppressPlanningClickRef.current = false;
-                        return;
-                      }
-                      pickAssigned(day, mealId!);
-                    }}
-                  >
-                    <span>{meal.emoji}</span>
-                    <div>
-                      <strong>{meal.name}</strong>
-                      <small>{meal.tags.join(" · ")}</small>
-                    </div>
-                  </div>
+                  <PlanningAssignedMeal
+                    day={day}
+                    meal={meal}
+                    mealId={mealId!}
+                    isPicked={pickedMealId === mealId && pickedFromDay === day}
+                    onPick={() => pickAssigned(day, mealId!)}
+                  />
                 ) : (
                   <p>{plannedCount >= session.max_selected_meals ? "Suggestion limit reached" : "Drop meal here"}</p>
                 )}
@@ -1575,24 +1495,141 @@ function MealPlanning({
                     <Plus size={14} />
                   </button>
                 </div>
-              </div>
-            );
-          })}
+                </PlanningWeekdaySlot>
+              );
+            })}
+          </div>
         </div>
-      </div>
+        <DragOverlay>
+          {activePlanningDrag ? (
+            <div className="touch-drag-preview dnd-drag-preview">
+              <span>{meals[activePlanningDrag.mealId]?.emoji ?? "?"}</span>
+              <strong>{meals[activePlanningDrag.mealId]?.name ?? "Meal"}</strong>
+            </div>
+          ) : null}
+        </DragOverlay>
+      </DndContext>
       <button className="primary bottom-action" disabled={plannedCount !== session.max_selected_meals || remaining < 0 || state.placed} onClick={submit}>
         Submit Suggestions <Check size={18} />
       </button>
-      {touchDrag?.active && (
-        <div
-          className="touch-drag-preview"
-          style={{ left: touchDrag.x, top: touchDrag.y }}
-        >
-          <span>{meals[touchDrag.mealId]?.emoji ?? "?"}</span>
-          <strong>{meals[touchDrag.mealId]?.name ?? "Meal"}</strong>
-        </div>
-      )}
     </section>
+  );
+}
+
+function PlanningRailMeal({
+  meal,
+  isAssigned,
+  isPicked,
+  onPick
+}: {
+  meal: Meal;
+  isAssigned: boolean;
+  isPicked: boolean;
+  onPick: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: `plan-meal:${meal.id}`,
+    data: { mealId: meal.id, fromDay: null }
+  });
+  const style = transform
+    ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }
+    : undefined;
+
+  return (
+    <button
+      key={meal.id}
+      className={[
+        "rail-meal",
+        isPicked ? "picked" : "",
+        isAssigned ? "assigned" : "",
+        isDragging ? "dragging" : ""
+      ].filter(Boolean).join(" ")}
+      onClick={onPick}
+      ref={setNodeRef}
+      style={style}
+      type="button"
+    >
+      <span>{meal.emoji}</span>
+      <strong>{meal.name}</strong>
+      <small>{meal.tags.join(" · ")}</small>
+      <span
+        aria-label={`Drag ${meal.name}`}
+        className="meal-drag-handle"
+        onClick={(event) => event.stopPropagation()}
+        title="Drag"
+        {...attributes}
+        {...listeners}
+      >
+        <GripVertical size={18} aria-hidden="true" />
+      </span>
+    </button>
+  );
+}
+
+function PlanningWeekdaySlot({
+  day,
+  isReady,
+  onClick,
+  children
+}: {
+  day: string;
+  isReady: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  const { isOver, setNodeRef } = useDroppable({ id: `plan-day:${day}` });
+
+  return (
+    <div
+      className={["weekday-slot", isReady ? "ready" : "", isOver ? "drop-over" : ""].filter(Boolean).join(" ")}
+      data-weekday-slot={day}
+      onClick={onClick}
+      ref={setNodeRef}
+    >
+      {children}
+    </div>
+  );
+}
+
+function PlanningAssignedMeal({
+  day,
+  meal,
+  mealId,
+  isPicked,
+  onPick
+}: {
+  day: string;
+  meal: Meal;
+  mealId: string;
+  isPicked: boolean;
+  onPick: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: `plan-assigned:${day}`,
+    data: { mealId, fromDay: day }
+  });
+  const style = transform
+    ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }
+    : undefined;
+
+  return (
+    <div
+      className={["slot-meal", isPicked ? "picked" : "", isDragging ? "dragging" : ""].filter(Boolean).join(" ")}
+      onClick={(event) => {
+        event.stopPropagation();
+        onPick();
+      }}
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+    >
+      <span>{meal.emoji}</span>
+      <div>
+        <strong>{meal.name}</strong>
+        <small>{meal.tags.join(" · ")}</small>
+      </div>
+    </div>
   );
 }
 
@@ -2120,10 +2157,11 @@ function FinalForkcast({
   const [draggingDay, setDraggingDay] = useState("");
   const [dragOverDay, setDragOverDay] = useState("");
   const [pickedReorderDay, setPickedReorderDay] = useState("");
-  const [touchReorder, setTouchReorder] = useState<{ sourceDay: string; x: number; y: number; active: boolean } | null>(null);
-  const touchReorderStartRef = useRef<{ x: number; y: number } | null>(null);
-  const touchReorderRef = useRef<typeof touchReorder>(null);
-  const suppressFinalClickRef = useRef(false);
+  const [activeFinalDrag, setActiveFinalDrag] = useState("");
+  const finalSensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 180, tolerance: 10 } })
+  );
   const [saved, setSaved] = useState(() => {
     const savedWeeks = JSON.parse(localStorage.getItem(SAVED_WEEKS_KEY) ?? "{}") as Record<string, { session_id?: string }>;
     return savedWeeks[savedWeekId]?.session_id === session.id;
@@ -2250,56 +2288,27 @@ function FinalForkcast({
     dropOnDay(day, pickedReorderDay);
   }
 
-  function startFinalTouchReorder(event: React.PointerEvent, day: string) {
-    if (!canReorder || event.pointerType === "mouse") return;
-    event.currentTarget.setPointerCapture(event.pointerId);
-    touchReorderStartRef.current = { x: event.clientX, y: event.clientY };
-    const nextReorder = { sourceDay: day, x: event.clientX, y: event.clientY, active: false };
-    touchReorderRef.current = nextReorder;
-    suppressFinalClickRef.current = false;
-    setTouchReorder(nextReorder);
+  function handleFinalDragStart(event: DragStartEvent) {
+    const sourceDay = String(event.active.id).replace("final-day:", "");
+    setDraggingDay(sourceDay);
+    setActiveFinalDrag(sourceDay);
   }
 
-  function moveFinalTouchReorder(event: React.PointerEvent) {
-    const reorder = touchReorderRef.current;
-    if (!reorder) return;
-    const start = touchReorderStartRef.current;
-    const movedEnough = start
-      ? Math.abs(event.clientX - start.x) + Math.abs(event.clientY - start.y) > 12
-      : true;
-    if (movedEnough) {
-      event.preventDefault();
-      suppressFinalClickRef.current = true;
-      setDraggingDay(reorder.sourceDay);
-      const target = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>("[data-final-day]");
-      const day = target?.dataset.finalDay ?? "";
-      setDragOverDay(day && day !== reorder.sourceDay ? day : "");
-    }
-    const nextReorder = { ...reorder, x: event.clientX, y: event.clientY, active: reorder.active || movedEnough };
-    touchReorderRef.current = nextReorder;
-    setTouchReorder(nextReorder);
+  function handleFinalDragOver(event: DragEndEvent) {
+    const targetDay = String(event.over?.id ?? "").replace("final-day:", "");
+    setDragOverDay(targetDay && targetDay !== draggingDay ? targetDay : "");
   }
 
-  function endFinalTouchReorder(event: React.PointerEvent) {
-    const reorder = touchReorderRef.current;
-    if (!reorder) return;
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
+  function handleFinalDragEnd(event: DragEndEvent) {
+    const sourceDay = String(event.active.id).replace("final-day:", "");
+    const targetDay = String(event.over?.id ?? "").replace("final-day:", "");
+    if (targetDay) {
+      dropOnDay(targetDay, sourceDay);
+    } else {
+      setDraggingDay("");
+      setDragOverDay("");
     }
-    if (reorder.active) {
-      event.preventDefault();
-      const target = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>("[data-final-day]");
-      const day = target?.dataset.finalDay ?? "";
-      if (day) {
-        dropOnDay(day, reorder.sourceDay);
-      } else {
-        setDraggingDay("");
-        setDragOverDay("");
-      }
-    }
-    setTouchReorder(null);
-    touchReorderRef.current = null;
-    touchReorderStartRef.current = null;
+    setActiveFinalDrag("");
   }
 
   return (
@@ -2338,106 +2347,151 @@ function FinalForkcast({
         </div>
       )}
       {canReorder && <p className="final-reorder-hint">Drag a meal onto another day, or tap one day and then another, to swap before saving.</p>}
-      <div className="day-stack final-week-stack">
-        {session.days.map((day) => {
-          const entry = previewWeek[day];
-          if (!entry) return null;
-          const hearts = heartsForDay(day, entry.meal_id);
-          const proposal = proposalForEntry(day, entry.meal_id);
-          const isPreviewTarget = Boolean(draggingDay && dragOverDay === day && draggingDay !== day);
-          const isPreviewSource = Boolean(dragOverDay && draggingDay === day && dragOverDay !== day);
-          return (
-            <article
-              className={
-                [
-                  "day locked final-day rush-day",
-                  `rush-day-${day}`,
-                  draggingDay === day ? "dragging" : "",
-                  pickedReorderDay === day ? "picked" : "",
-                  isPreviewTarget ? "swap-target" : "",
-                  isPreviewSource ? "swap-source" : ""
-                ].filter(Boolean).join(" ")
-              }
-              data-final-day={day}
-              draggable={canReorder}
-              key={day}
-              onClick={() => {
-                if (suppressFinalClickRef.current) {
-                  suppressFinalClickRef.current = false;
-                  return;
-                }
-                tapReorderDay(day);
-              }}
-              onDragStart={(event) => {
-                setDraggingDay(day);
-                event.dataTransfer.effectAllowed = "move";
-                event.dataTransfer.setData("text/plain", day);
-              }}
-              onDragEnd={() => {
-                setDraggingDay("");
-                setDragOverDay("");
-              }}
-              onDragOver={(event) => {
-                if (!canReorder) return;
-                event.preventDefault();
-                if (draggingDay && draggingDay !== day) {
-                  setDragOverDay(day);
-                }
-              }}
-              onDragLeave={(event) => {
-                if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-                  setDragOverDay((current) => (current === day ? "" : current));
-                }
-              }}
-              onDrop={(event) => {
-                event.preventDefault();
-                dropOnDay(day, event.dataTransfer.getData("text/plain") || draggingDay);
-              }}
-              onPointerDown={(event) => startFinalTouchReorder(event, day)}
-              onPointerMove={moveFinalTouchReorder}
-              onPointerUp={endFinalTouchReorder}
-              onPointerCancel={endFinalTouchReorder}
-            >
-              <h3>{titleCase(day)}</h3>
-              <div className="locked-meal final-locked-meal">
-                <div className="final-meal-title">
-                  <span className="meal-emoji">{meals[entry.meal_id]?.emoji}</span>
-                  <strong>{meals[entry.meal_id]?.name}</strong>
-                  <span className="final-heart-count">
-                    <Heart size={22} fill="currentColor" aria-hidden="true" />
-                    {hearts}
-                  </span>
-                </div>
-                {session.game_mode === "REALTIME_RUSH" && (
-                  <div className="final-rush-summary">
-                    <span>Pitched by: {proposal?.owners.map((id) => session.players[id]?.name ?? id).join(" + ") || "The table"}</span>
-                    <span>Most love: {topSupporterName(proposal)} <Heart size={24} fill="currentColor" aria-hidden="true" /></span>
-                    <span>{heartRankLabel(day)}</span>
-                  </div>
-                )}
-                <div className="final-crew-avatars" aria-label={`${titleCase(day)} crew`}>
-                  <div className="final-role-avatar">
-                    <b>{entry.chef[0] ? session.players[entry.chef[0]]?.avatar ?? "?" : "?"}</b>
-                    <span>Chef</span>
-                    <strong>{entry.chef[0] ? session.players[entry.chef[0]]?.name ?? entry.chef[0] : "Unassigned"}</strong>
-                  </div>
-                  <div className="final-role-avatar">
-                    <b>{entry.cleanup[0] ? session.players[entry.cleanup[0]]?.avatar ?? "?" : "?"}</b>
-                    <span>Clean up</span>
-                    <strong>{entry.cleanup[0] ? session.players[entry.cleanup[0]]?.name ?? entry.cleanup[0] : "Unassigned"}</strong>
-                  </div>
-                </div>
-              </div>
-            </article>
-          );
-        })}
-      </div>
-      {touchReorder?.active && (
-        <div className="touch-drag-preview final-touch-preview" style={{ left: touchReorder.x, top: touchReorder.y }}>
-          <span>{meals[session.week[touchReorder.sourceDay]?.meal_id ?? ""]?.emoji ?? "?"}</span>
-          <strong>{titleCase(touchReorder.sourceDay)}</strong>
+      <DndContext
+        sensors={finalSensors}
+        onDragStart={handleFinalDragStart}
+        onDragOver={handleFinalDragOver}
+        onDragEnd={handleFinalDragEnd}
+        onDragCancel={() => {
+          setDraggingDay("");
+          setDragOverDay("");
+          setActiveFinalDrag("");
+        }}
+      >
+        <div className="day-stack final-week-stack">
+          {session.days.map((day) => {
+            const entry = previewWeek[day];
+            if (!entry) return null;
+            const hearts = heartsForDay(day, entry.meal_id);
+            const proposal = proposalForEntry(day, entry.meal_id);
+            const isPreviewTarget = Boolean(draggingDay && dragOverDay === day && draggingDay !== day);
+            const isPreviewSource = Boolean(dragOverDay && draggingDay === day && dragOverDay !== day);
+            return (
+              <FinalDayCard
+                key={day}
+                canReorder={canReorder}
+                day={day}
+                entry={entry}
+                hearts={hearts}
+                isDragging={draggingDay === day}
+                isPicked={pickedReorderDay === day}
+                isPreviewSource={isPreviewSource}
+                isPreviewTarget={isPreviewTarget}
+                meal={meals[entry.meal_id]}
+                proposal={proposal}
+                session={session}
+                onTap={() => tapReorderDay(day)}
+                topSupporterName={topSupporterName}
+                heartRankLabel={heartRankLabel}
+              />
+            );
+          })}
         </div>
-      )}
+        <DragOverlay>
+          {activeFinalDrag ? (
+            <div className="touch-drag-preview final-touch-preview dnd-drag-preview">
+              <span>{meals[session.week[activeFinalDrag]?.meal_id ?? ""]?.emoji ?? "?"}</span>
+              <strong>{titleCase(activeFinalDrag)}</strong>
+            </div>
+          ) : null}
+        </DragOverlay>
+      </DndContext>
     </section>
+  );
+}
+
+function FinalDayCard({
+  canReorder,
+  day,
+  entry,
+  hearts,
+  isDragging,
+  isPicked,
+  isPreviewSource,
+  isPreviewTarget,
+  meal,
+  proposal,
+  session,
+  onTap,
+  topSupporterName,
+  heartRankLabel
+}: {
+  canReorder: boolean;
+  day: string;
+  entry: NonNullable<Session["week"][string]>;
+  hearts: number;
+  isDragging: boolean;
+  isPicked: boolean;
+  isPreviewSource: boolean;
+  isPreviewTarget: boolean;
+  meal?: Meal;
+  proposal?: Proposal;
+  session: Session;
+  onTap: () => void;
+  topSupporterName: (proposal: Proposal | undefined) => string;
+  heartRankLabel: (day: string) => string;
+}) {
+  const draggable = useDraggable({
+    id: `final-day:${day}`,
+    disabled: !canReorder
+  });
+  const droppable = useDroppable({ id: `final-day:${day}`, disabled: !canReorder });
+  const style = draggable.transform
+    ? { transform: `translate3d(${draggable.transform.x}px, ${draggable.transform.y}px, 0)` }
+    : undefined;
+
+  return (
+    <article
+      className={
+        [
+          "day locked final-day rush-day",
+          `rush-day-${day}`,
+          isDragging || draggable.isDragging ? "dragging" : "",
+          isPicked ? "picked" : "",
+          isPreviewTarget || droppable.isOver ? "swap-target" : "",
+          isPreviewSource ? "swap-source" : ""
+        ].filter(Boolean).join(" ")
+      }
+      data-final-day={day}
+      onClick={onTap}
+      ref={(node) => {
+        draggable.setNodeRef(node);
+        droppable.setNodeRef(node);
+      }}
+      style={style}
+      {...draggable.attributes}
+      {...draggable.listeners}
+    >
+      <h3>{titleCase(day)}</h3>
+      <div className="locked-meal final-locked-meal">
+        <div className="final-meal-title">
+          <span className="meal-emoji">{meal?.emoji}</span>
+          <strong>{meal?.name}</strong>
+          <span className="final-heart-count">
+            <Heart size={22} fill="currentColor" aria-hidden="true" />
+            {hearts}
+          </span>
+        </div>
+        {session.game_mode === "REALTIME_RUSH" && (
+          <div className="final-rush-summary">
+            <span>Pitched by: {proposal?.owners.map((id) => session.players[id]?.name ?? id).join(" + ") || "The table"}</span>
+            <span>Most love: {topSupporterName(proposal)} <Heart size={24} fill="currentColor" aria-hidden="true" /></span>
+            <span>{heartRankLabel(day)}</span>
+          </div>
+        )}
+        <div className="final-crew-avatars" aria-label={`${titleCase(day)} crew`}>
+          <div className="final-role-avatar">
+            <b>{entry.chef[0] ? session.players[entry.chef[0]]?.avatar ?? "?" : "?"}</b>
+            <span>Chef</span>
+            <strong>{entry.chef[0] ? session.players[entry.chef[0]]?.name ?? entry.chef[0] : "Unassigned"}</strong>
+          </div>
+          <div className="final-role-avatar">
+            <b>{entry.cleanup[0] ? session.players[entry.cleanup[0]]?.avatar ?? "?" : "?"}</b>
+            <span>Clean up</span>
+            <strong>{entry.cleanup[0] ? session.players[entry.cleanup[0]]?.name ?? entry.cleanup[0] : "Unassigned"}</strong>
+          </div>
+        </div>
+      </div>
+    </article>
   );
 }

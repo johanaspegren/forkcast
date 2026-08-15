@@ -638,7 +638,7 @@ h3 {
   min-height: 78px;
   padding: 10px;
   display: grid;
-  grid-template-columns: 34px 1fr;
+  grid-template-columns: 34px 1fr 30px;
   grid-template-rows: auto auto;
   align-items: center;
   gap: 2px 8px;
@@ -649,15 +649,36 @@ h3 {
   border: 2px solid rgba(255, 255, 255, 0.82);
   outline: 2px solid transparent;
   border-radius: 16px;
-  touch-action: none;
+  touch-action: pan-x;
   -webkit-touch-callout: none;
   user-select: none;
   box-shadow: 0 5px 0 rgba(39, 70, 160, 0.14);
 }
 
-.rail-meal span {
+.rail-meal > span:first-child {
   grid-row: 1 / 3;
   font-size: 1.6rem;
+}
+
+.meal-drag-handle {
+  grid-column: 3;
+  grid-row: 1 / 3;
+  width: 30px;
+  height: 52px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  align-self: center;
+  justify-self: end;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.58), rgba(255, 255, 255, 0) 42%),
+    linear-gradient(180deg, #44e8ff, #35d46a);
+  color: #063f20;
+  font-size: 1.1rem;
+  font-weight: 900;
+  line-height: 0.75;
+  touch-action: none;
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.58), 0 3px 0 rgba(12, 82, 58, 0.18);
 }
 
 .rail-meal small {
@@ -670,6 +691,11 @@ h3 {
 .rail-meal.assigned {
   filter: grayscale(1);
   opacity: 0.42;
+}
+
+.rail-meal.dragging,
+.slot-meal.dragging {
+  opacity: 0.55;
 }
 
 .rail-meal.picked {
@@ -700,6 +726,11 @@ h3 {
 
 .weekday-slot.ready {
   border-color: rgba(255, 49, 94, 0.76);
+}
+
+.weekday-slot.drop-over {
+  border-color: rgba(70, 215, 105, 0.95);
+  box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.62), 0 7px 0 rgba(22, 135, 71, 0.18);
 }
 
 .weekday-slot.ready::after {
@@ -779,6 +810,11 @@ h3 {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.dnd-drag-preview {
+  position: static;
+  transform: none;
 }
 
 .slot-meal.picked {
