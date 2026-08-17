@@ -207,6 +207,7 @@ class CardPlayRequest(BaseModel):
 class RealtimeHeartRequest(BaseModel):
     player_id: str
     proposal_id: str
+    event_id: str | None = None
 
 
 class RealtimeFreezeRequest(BaseModel):

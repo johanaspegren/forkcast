@@ -1,3 +1,5 @@
+from uuid import uuid4
+
 from fastapi import APIRouter, Query
 
 from backend.forkcast.api.school_menu import fetch_matilda_school_menu
@@ -140,8 +142,22 @@ async def begin_negotiation(session_id: str) -> Session:
 
 @router.post("/sessions/{session_id}/realtime/heart")
 async def realtime_heart(session_id: str, request: RealtimeHeartRequest) -> Session:
+    existing_session = engine.get_session(session_id)
+    previous_override = (
+        existing_session.realtime_override_window.model_dump(mode="json")
+        if existing_session.realtime_override_window
+        else None
+    )
     session = engine.realtime_heart(session_id, request)
-    await manager.broadcast(session)
+    current_override = session.realtime_override_window.model_dump(mode="json") if session.realtime_override_window else None
+    if session.phase != "REALTIME_RUSH":
+        await manager.broadcast(session)
+        return session
+
+    event_id = request.event_id or uuid4().hex
+    await manager.broadcast_heart(session, request.proposal_id, request.player_id, event_id)
+    if current_override != previous_override:
+        await manager.broadcast(session)
     return session
 
 

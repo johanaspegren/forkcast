@@ -68,10 +68,10 @@ export const api = {
     }),
   continueReveal: (sessionId: string) =>
     request<Session>(`/api/sessions/${sessionId}/reveal/continue`, { method: "POST" }),
-  realtimeHeart: (sessionId: string, playerId: string, proposalId: string) =>
+  realtimeHeart: (sessionId: string, playerId: string, proposalId: string, eventId: string) =>
     request<Session>(`/api/sessions/${sessionId}/realtime/heart`, {
       method: "POST",
-      body: JSON.stringify({ player_id: playerId, proposal_id: proposalId })
+      body: JSON.stringify({ player_id: playerId, proposal_id: proposalId, event_id: eventId })
     }),
   realtimeFreeze: (sessionId: string, playerId: string, proposalId: string) =>
     request<Session>(`/api/sessions/${sessionId}/realtime/freeze`, {

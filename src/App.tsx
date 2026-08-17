@@ -8,13 +8,14 @@ import { connectSessionSocket } from "./api/websocket";
 import { PlayerAvatar } from "./components/PlayerAvatar";
 import { VotingPoints } from "./components/VotingPoints";
 import type { GameMode, Meal, Proposal, SavedWeek, SchoolMenu, Session } from "./game/gameTypes";
+import { heartTotal, publishHeart, rollbackHeart, useDayLeader, useProposalHearts } from "./realtime/hearts";
 import { uiAssets } from "./uiAssets";
 
 const titleCase = (value: string) => value.slice(0, 1).toUpperCase() + value.slice(1);
 const heartBurstOffsets = [-28, -18, -8, 4, 14, 24, 34, 44];
 const SAVED_WEEKS_KEY = "forkcast.savedWeeks";
 const PLAYER_PROFILE_KEY = "forkcast.playerProfile";
-const DEBUG_BUILD_MARKER = "ANDROID-DRAG-HANDLE-2026-08-16-A";
+const DEBUG_BUILD_MARKER = "ANDROID-LIVE-HEARTS-2026-08-17-A";
 const avatarChoices = ["🦄", "🐱", "🦊", "🐼", "🐸", "🐵", "🐯", "🐰", "🥘", "🍕", "🌮", "🍜"];
 const SCHOOL_MENU_URL = "https://menu.matildaplatform.com/meals/week/6752f62a2554115c468f8cb8_forskola-skola";
 const defaultCrewLabels = { cook: "Cook", clean: "Cleaner" };
@@ -504,12 +505,17 @@ export default function App() {
 
   useEffect(() => {
     if (!session?.id || session.id === MOCK_WEEKLY_SESSION.id) return;
-    const socket = connectSessionSocket(session.id, setSession, () => {
-      setSession(null);
-      setPlayerId("");
-      localStorage.removeItem("forkcast.playerId");
-      setError("Session was deleted.");
-    });
+    const socket = connectSessionSocket(
+      session.id,
+      setSession,
+      () => {
+        setSession(null);
+        setPlayerId("");
+        localStorage.removeItem("forkcast.playerId");
+        setError("Session was deleted.");
+      },
+      publishHeart
+    );
     return () => socket.close();
   }, [session?.id]);
 
@@ -858,7 +864,9 @@ export default function App() {
           session={session}
           meals={mealById}
           playerId={playerId}
-          onHeart={(proposalId) => run(() => api.realtimeHeart(session.id, playerId, proposalId))}
+          onHeart={async (proposalId, eventId) => {
+            await api.realtimeHeart(session.id, playerId, proposalId, eventId);
+          }}
           onFreeze={(proposalId) => run(() => api.realtimeFreeze(session.id, playerId, proposalId))}
           onPlayCard={(payload) => run(() => api.playCard(session.id, { player_id: playerId, ...payload }))}
           onOverride={(windowId) => run(() => api.realtimeOverride(session.id, playerId, windowId))}
@@ -1785,14 +1793,13 @@ function RealtimeRush({
   session: Session;
   meals: Record<string, Meal>;
   playerId: string;
-  onHeart: (proposalId: string) => void;
+  onHeart: (proposalId: string, eventId: string) => Promise<void>;
   onFreeze: (proposalId: string) => void;
   onPlayCard: (payload: { card: string; proposal_id: string }) => void;
   onOverride: (windowId: string) => void;
   onTick: () => void;
 }) {
   const [now, setNow] = useState(() => Date.now() / 1000);
-  const [heartBursts, setHeartBursts] = useState<Array<{ id: string; proposalId: string }>>([]);
   const usedFreeze = session.realtime_freezes_used.includes(playerId);
   const overrideWindow = session.realtime_override_window;
   const openWindow = overrideWindow?.status === "OPEN" ? overrideWindow : null;
@@ -1819,12 +1826,24 @@ function RealtimeRush({
   function handleHeart(proposalId: string) {
     if (!rushHasStarted) return;
     playHappyOink();
-    const burstId = `${proposalId}-${Date.now()}-${Math.random()}`;
-    setHeartBursts((current) => [...current.slice(-18), { id: burstId, proposalId }]);
-    window.setTimeout(() => {
-      setHeartBursts((current) => current.filter((burst) => burst.id !== burstId));
-    }, 760);
-    onHeart(proposalId);
+    const proposal = session.proposals[proposalId];
+    if (!proposal) return;
+    const eventId = crypto.randomUUID?.() ?? `${proposalId}-${Date.now()}-${Math.random()}`;
+    const dayProposals = Object.values(session.proposals).filter((candidate) => candidate.day === proposal.day);
+    const leaderId = maxBy(dayProposals, (candidate) => {
+      const baseline = session.realtime_stats.hearts_by_proposal[candidate.id] ?? 0;
+      const score = candidate.voting_points + heartTotal(candidate.id, baseline) - baseline + (candidate.id === proposalId ? 1 : 0);
+      return score * 1000 + candidate.supporters.length;
+    })?.id ?? proposalId;
+    publishHeart({
+      eventId,
+      proposalId,
+      playerId,
+      total: heartTotal(proposalId, session.realtime_stats.hearts_by_proposal[proposalId] ?? 0) + 1,
+      day: proposal.day,
+      leaderId
+    });
+    void onHeart(proposalId, eventId).catch(() => rollbackHeart(eventId, proposalId));
   }
 
   return (
@@ -1874,92 +1893,26 @@ function RealtimeRush({
                 const frozenSeconds = Math.max(0, Math.ceil(frozenUntil - now));
                 const isFrozen = frozenSeconds > 0;
                 const meal = meals[proposal.meal_id];
-                const streak = session.realtime_stats.hearts_by_proposal[proposal.id] ?? 0;
-                const bursts = heartBursts.filter((burst) => burst.proposalId === proposal.id);
                 const cookCommitted = proposal.chef_volunteers.includes(playerId);
                 const cleanCommitted = proposal.cleanup_volunteers.includes(playerId);
                 return (
-                  <div className={proposal.id === leaderId ? "rush-card leader" : "rush-card"} key={proposal.id}>
-                    {proposal.id === leaderId && (
-                      <>
-                        <span className="rush-leader-rank">1</span>
-                        <span className="rush-leader-badge">★ Leader</span>
-                      </>
-                    )}
-                    <div className="rush-card-top">
-                      <div className="proposal-main">
-                        <span className="meal-emoji">{meal?.emoji}</span>
-                        <div>
-                          <strong>{meal?.name}</strong>
-                          <small>by {proposal.owners.map((id) => session.players[id]?.name).join(" + ")}</small>
-                        </div>
-                      </div>
-                      <b className="proposal-score">
-                        <img src={uiAssets.votingPoint} alt="" aria-hidden="true" />
-                        {proposal.voting_points}
-                      </b>
-                    </div>
-                    {streak >= 3 && bursts.length > 0 && <div className="rush-streak">Heart streak x{streak}</div>}
-                    {bursts.length > 0 && (
-                      <div className="heart-burst" aria-hidden="true">
-                        {bursts.map((burst, index) => (
-                          <span
-                            key={burst.id}
-                            style={{ "--burst-x": `${heartBurstOffsets[index % heartBurstOffsets.length]}px` } as React.CSSProperties}
-                          >
-                            ♥
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                    <div className="rush-actions">
-                      <button
-                        className="rush-icon-button rush-heart"
-                        disabled={!rushHasStarted || isFrozen}
-                        aria-label="Heart this meal"
-                        title="Heart"
-                        onClick={() => handleHeart(proposal.id)}
-                      >
-                        <Heart size={30} fill="currentColor" aria-hidden="true" />
-                      </button>
-                      <button
-                        className="rush-icon-button rush-freeze"
-                        disabled={!rushHasStarted || usedFreeze || isFrozen}
-                        aria-label={isFrozen ? `Frozen for ${frozenSeconds} seconds` : usedFreeze ? "Freeze already used" : "Freeze this meal"}
-                        title={isFrozen ? `Frozen ${frozenSeconds}s` : usedFreeze ? "Freeze used" : "Freeze"}
-                        onClick={() => onFreeze(proposal.id)}
-                      >
-                        <Snowflake size={22} aria-hidden="true" />
-                        {(isFrozen || usedFreeze) && <span>{isFrozen ? frozenSeconds : "✓"}</span>}
-                      </button>
-                      <button
-                        className={cookCommitted ? "rush-icon-button rush-chore active" : "rush-icon-button rush-chore"}
-                        disabled={!rushHasStarted}
-                        aria-label={cookCommitted ? "Stop cooking this meal" : "Cook this meal"}
-                        title={cookCommitted ? "Un-cook" : "Cook"}
-                        aria-pressed={cookCommitted}
-                        onClick={() => onPlayCard({ card: "ILL_COOK", proposal_id: proposal.id })}
-                      >
-                        <CookingPot size={22} aria-hidden="true" />
-                      </button>
-                      <button
-                        className={cleanCommitted ? "rush-icon-button rush-chore active" : "rush-icon-button rush-chore"}
-                        disabled={!rushHasStarted}
-                        aria-label={cleanCommitted ? "Stop cleaning this meal" : "Clean this meal"}
-                        title={cleanCommitted ? "Un-clean" : "Clean"}
-                        aria-pressed={cleanCommitted}
-                        onClick={() => onPlayCard({ card: "ILL_CLEAN", proposal_id: proposal.id })}
-                      >
-                        <Sparkles size={22} aria-hidden="true" />
-                      </button>
-                    </div>
-                    {(proposal.chef_volunteers.length > 0 || proposal.cleanup_volunteers.length > 0) && (
-                      <div className="volunteer-line">
-                        {proposal.chef_volunteers.length > 0 && <span>Chef: {proposal.chef_volunteers.map((id) => session.players[id]?.name).join(", ")}</span>}
-                        {proposal.cleanup_volunteers.length > 0 && <span>Cleanup: {proposal.cleanup_volunteers.map((id) => session.players[id]?.name).join(", ")}</span>}
-                      </div>
-                    )}
-                  </div>
+                  <RushProposalCard
+                    key={proposal.id}
+                    cleanCommitted={cleanCommitted}
+                    cookCommitted={cookCommitted}
+                    isFrozen={isFrozen}
+                    initialHearts={session.realtime_stats.hearts_by_proposal[proposal.id] ?? 0}
+                    initialLeaderId={leaderId}
+                    meal={meal}
+                    onFreeze={onFreeze}
+                    onHeart={handleHeart}
+                    onPlayCard={onPlayCard}
+                    players={session.players}
+                    proposal={proposal}
+                    rushHasStarted={rushHasStarted}
+                    usedFreeze={usedFreeze}
+                    frozenSeconds={frozenSeconds}
+                  />
                 );
               })}
             </article>
@@ -1975,6 +1928,128 @@ function RealtimeRush({
         </div>
       )}
     </section>
+  );
+}
+
+function RushProposalCard({
+  cleanCommitted,
+  cookCommitted,
+  frozenSeconds,
+  initialHearts,
+  initialLeaderId,
+  isFrozen,
+  meal,
+  onFreeze,
+  onHeart,
+  onPlayCard,
+  players,
+  proposal,
+  rushHasStarted,
+  usedFreeze
+}: {
+  cleanCommitted: boolean;
+  cookCommitted: boolean;
+  frozenSeconds: number;
+  initialHearts: number;
+  initialLeaderId: string;
+  isFrozen: boolean;
+  meal?: Meal;
+  onFreeze: (proposalId: string) => void;
+  onHeart: (proposalId: string) => void;
+  onPlayCard: (payload: { card: string; proposal_id: string }) => void;
+  players: Session["players"];
+  proposal: Proposal;
+  rushHasStarted: boolean;
+  usedFreeze: boolean;
+}) {
+  const hearts = useProposalHearts(proposal.id, initialHearts);
+  const leaderId = useDayLeader(proposal.day, initialLeaderId);
+  const isLeader = proposal.id === leaderId;
+  const score = proposal.voting_points + hearts.total - initialHearts;
+
+  return (
+    <div className={isLeader ? "rush-card leader" : "rush-card"}>
+      {isLeader && (
+        <>
+          <span className="rush-leader-rank">1</span>
+          <span className="rush-leader-badge">★ Leader</span>
+        </>
+      )}
+      <div className="rush-card-top">
+        <div className="proposal-main">
+          <span className="meal-emoji">{meal?.emoji}</span>
+          <div>
+            <strong>{meal?.name}</strong>
+            <small>by {proposal.owners.map((id) => players[id]?.name).join(" + ")}</small>
+          </div>
+        </div>
+        <b className="proposal-score">
+          <img src={uiAssets.votingPoint} alt="" aria-hidden="true" />
+          {score}
+        </b>
+      </div>
+      {hearts.total >= 3 && hearts.bursts.length > 0 && <div className="rush-streak">Heart streak x{hearts.total}</div>}
+      {hearts.bursts.length > 0 && (
+        <div className="heart-burst" aria-hidden="true">
+          {hearts.bursts.map((burst, index) => (
+            <span
+              key={burst.eventId}
+              style={{ "--burst-x": `${heartBurstOffsets[index % heartBurstOffsets.length]}px` } as React.CSSProperties}
+            >
+              <b>{players[burst.playerId]?.avatar ?? "♥"}</b>
+              <i>♥</i>
+            </span>
+          ))}
+        </div>
+      )}
+      <div className="rush-actions">
+        <button
+          className="rush-icon-button rush-heart"
+          disabled={!rushHasStarted || isFrozen}
+          aria-label="Heart this meal"
+          title="Heart"
+          onClick={() => onHeart(proposal.id)}
+        >
+          <Heart size={30} fill="currentColor" aria-hidden="true" />
+        </button>
+        <button
+          className="rush-icon-button rush-freeze"
+          disabled={!rushHasStarted || usedFreeze || isFrozen}
+          aria-label={isFrozen ? `Frozen for ${frozenSeconds} seconds` : usedFreeze ? "Freeze already used" : "Freeze this meal"}
+          title={isFrozen ? `Frozen ${frozenSeconds}s` : usedFreeze ? "Freeze used" : "Freeze"}
+          onClick={() => onFreeze(proposal.id)}
+        >
+          <Snowflake size={22} aria-hidden="true" />
+          {(isFrozen || usedFreeze) && <span>{isFrozen ? frozenSeconds : "✓"}</span>}
+        </button>
+        <button
+          className={cookCommitted ? "rush-icon-button rush-chore active" : "rush-icon-button rush-chore"}
+          disabled={!rushHasStarted}
+          aria-label={cookCommitted ? "Stop cooking this meal" : "Cook this meal"}
+          title={cookCommitted ? "Un-cook" : "Cook"}
+          aria-pressed={cookCommitted}
+          onClick={() => onPlayCard({ card: "ILL_COOK", proposal_id: proposal.id })}
+        >
+          <CookingPot size={22} aria-hidden="true" />
+        </button>
+        <button
+          className={cleanCommitted ? "rush-icon-button rush-chore active" : "rush-icon-button rush-chore"}
+          disabled={!rushHasStarted}
+          aria-label={cleanCommitted ? "Stop cleaning this meal" : "Clean this meal"}
+          title={cleanCommitted ? "Un-clean" : "Clean"}
+          aria-pressed={cleanCommitted}
+          onClick={() => onPlayCard({ card: "ILL_CLEAN", proposal_id: proposal.id })}
+        >
+          <Sparkles size={22} aria-hidden="true" />
+        </button>
+      </div>
+      {(proposal.chef_volunteers.length > 0 || proposal.cleanup_volunteers.length > 0) && (
+        <div className="volunteer-line">
+          {proposal.chef_volunteers.length > 0 && <span>Chef: {proposal.chef_volunteers.map((id) => players[id]?.name).join(", ")}</span>}
+          {proposal.cleanup_volunteers.length > 0 && <span>Cleanup: {proposal.cleanup_volunteers.map((id) => players[id]?.name).join(", ")}</span>}
+        </div>
+      )}
+    </div>
   );
 }
 

@@ -1560,11 +1560,38 @@ h3 {
 .heart-burst span {
   --burst-x: 0px;
   position: absolute;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: #fffdf7;
+  border: 2px solid #ff2b63;
   color: #ff2b63;
-  font-size: 1.35rem;
   line-height: 1;
-  filter: drop-shadow(0 3px 0 rgba(87, 13, 55, 0.18));
+  box-shadow: 0 3px 0 rgba(87, 13, 55, 0.18);
   animation: heart-pop 760ms ease-out forwards;
+}
+
+.heart-burst b {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.heart-burst i {
+  position: absolute;
+  right: -5px;
+  bottom: -6px;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: #ff2b63;
+  border: 1px solid #fff;
+  color: #fff;
+  font-size: 0.62rem;
+  font-style: normal;
 }
 
 @keyframes heart-pop {
@@ -1579,6 +1606,24 @@ h3 {
   100% {
     opacity: 0;
     transform: translate(var(--burst-x), -88px) scale(1.34) rotate(14deg);
+  }
+}
+
+@media (pointer: coarse) {
+  body {
+    background-attachment: scroll;
+  }
+
+  .rush-leader-rank {
+    text-shadow: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .heart-burst span,
+  .rush-streak,
+  .rush-countdown span {
+    animation: none;
   }
 }
 
