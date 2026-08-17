@@ -7,7 +7,7 @@ import { api } from "./api/rest";
 import { connectSessionSocket } from "./api/websocket";
 import { PlayerAvatar } from "./components/PlayerAvatar";
 import { VotingPoints } from "./components/VotingPoints";
-import type { GameMode, Meal, Proposal, SavedWeek, SchoolMenu, Session } from "./game/gameTypes";
+import type { GameMode, Meal, Proposal, SavedWeek, Session } from "./game/gameTypes";
 import { heartTotal, publishHeart, rollbackHeart, useDayLeader, useProposalHearts } from "./realtime/hearts";
 import { uiAssets } from "./uiAssets";
 
@@ -15,9 +15,8 @@ const titleCase = (value: string) => value.slice(0, 1).toUpperCase() + value.sli
 const heartBurstOffsets = [-28, -18, -8, 4, 14, 24, 34, 44];
 const SAVED_WEEKS_KEY = "forkcast.savedWeeks";
 const PLAYER_PROFILE_KEY = "forkcast.playerProfile";
-const DEBUG_BUILD_MARKER = "ANDROID-LIVE-HEARTS-2026-08-17-B";
+const DEBUG_BUILD_MARKER = "ANDROID-PLANNER-SCROLL-2026-08-17-A";
 const avatarChoices = ["🦄", "🐱", "🦊", "🐼", "🐸", "🐵", "🐯", "🐰", "🥘", "🍕", "🌮", "🍜"];
-const SCHOOL_MENU_URL = "https://menu.matildaplatform.com/meals/week/6752f62a2554115c468f8cb8_forskola-skola";
 const defaultCrewLabels = { cook: "Cook", clean: "Cleaner" };
 const defaultDayStatusLabels = { today: "Today", reserved: "Reserved", leading: "Leading", open: "Open" };
 const defaultNutritionLabels = { calories: "cals", protein: "prots" };
@@ -476,7 +475,6 @@ export default function App() {
   const sessionId = searchParams.get("session");
   const requestedWeek = parseWeekParam(searchParams.get("week"), getDisplayWeek().year);
   const [meals, setMeals] = useState<Meal[]>(MOCK_DISPLAY_MEALS);
-  const [schoolMenu, setSchoolMenu] = useState<SchoolMenu | null>(null);
   const [session, setSession] = useState<Session | null>(() => isMockDisplay ? MOCK_WEEKLY_SESSION : null);
   const [playerId, setPlayerId] = useState(localStorage.getItem("forkcast.playerId") ?? "");
   const [profile, setProfile] = useState(readPlayerProfile);
@@ -489,7 +487,6 @@ export default function App() {
   useEffect(() => {
     if (isMockDisplay) return;
     api.meals().then((value) => setMeals(value as Meal[])).catch((err) => setError(err.message));
-    api.schoolMenu(SCHOOL_MENU_URL).then(setSchoolMenu).catch(() => undefined);
     if (sessionId && !isMockDisplay) {
       setJoinCode(sessionId);
       if (isDisplayMode) {
@@ -806,7 +803,6 @@ export default function App() {
         <MealPlanning
           session={session}
           allMeals={meals}
-          schoolMenu={schoolMenu}
           meals={mealById}
           playerId={playerId}
           onSubmit={(placements) =>
@@ -1261,42 +1257,15 @@ function DisplayScreen({
   );
 }
 
-function SchoolLunchStrip({ menu }: { menu: SchoolMenu }) {
-  return (
-    <div className="school-menu-strip">
-      <div className="school-menu-title">
-        <strong>School lunch</strong>
-        <span>{menu.start_date} - {menu.end_date}</span>
-      </div>
-      <div className="school-menu-days">
-        {menu.days.slice(0, 5).map((day) => {
-          const date = new Date(day.date);
-          const mainCourse = day.courses.find((course) => course.option_name === "Dagens lunch") ?? day.courses[0];
-          const greenCourse = day.courses.find((course) => course.option_name === "Dagens gröna");
-          return (
-            <div className="school-menu-day" key={day.date}>
-              <strong>{date.toLocaleDateString("en-US", { weekday: "short" })}</strong>
-              <span>{mainCourse?.name ?? "No lunch listed"}</span>
-              {greenCourse && <small>{greenCourse.name}</small>}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 function MealPlanning({
   session,
   allMeals,
-  schoolMenu,
   meals,
   playerId,
   onSubmit
 }: {
   session: Session;
   allMeals: Meal[];
-  schoolMenu: SchoolMenu | null;
   meals: Record<string, Meal>;
   playerId: string;
   onSubmit: (placements: Array<{ meal_id: string; day: string; points: number }>) => void;
@@ -1319,12 +1288,15 @@ function MealPlanning({
     Object.fromEntries(session.days.map((day) => [day, 0])) as Record<string, number>
   );
 
-  const assignedMeals = Object.values(assigned).filter(Boolean);
+  const assignedMealIds = new Set(
+    Object.values(assigned).filter((mealId): mealId is string => Boolean(mealId))
+  );
   const spent = Object.values(points).reduce((sum, value) => sum + value, 0);
   const remaining = state.voting_points_remaining - spent;
-  const plannedCount = assignedMeals.length;
+  const plannedCount = assignedMealIds.size;
 
   const filteredMeals = allMeals.filter((meal) => {
+    if (assignedMealIds.has(meal.id)) return false;
     if (filter === "favourites") return player.favourite_meals.includes(meal.id);
     if (filter === "asian") return meal.tags.includes("japanese") || meal.tags.includes("spiced");
     return meal.protein_type === "vegetarian" || meal.tags.includes("vegetarian");
@@ -1419,7 +1391,6 @@ function MealPlanning({
           <p className="planning-drag-hint">Tap a meal, then tap a day — or drag its grip.</p>
         </div>
       </div>
-      {schoolMenu && <SchoolLunchStrip menu={schoolMenu} />}
       <div className="filter-tabs">
         {(["favourites", "asian", "vego"] as const).map((option) => (
           <button key={option} className={filter === option ? "filter-tab active" : "filter-tab"} onClick={() => setFilter(option)}>
@@ -1435,18 +1406,14 @@ function MealPlanning({
       >
         <div className="planning-grid">
           <div className="meal-rail">
-            {filteredMeals.map((meal) => {
-              const isAssigned = assignedMeals.includes(meal.id);
-              return (
-                <PlanningRailMeal
-                  key={meal.id}
-                  meal={meal}
-                  isAssigned={isAssigned}
-                  isPicked={pickedMealId === meal.id}
-                  onPick={() => pickFromRail(meal.id)}
-                />
-              );
-            })}
+            {filteredMeals.map((meal) => (
+              <PlanningRailMeal
+                key={meal.id}
+                meal={meal}
+                isPicked={pickedMealId === meal.id}
+                onPick={() => pickFromRail(meal.id)}
+              />
+            ))}
           </div>
           <div className="weekday-dropzone">
             {session.days.map((day) => {
@@ -1527,12 +1494,10 @@ function MealPlanning({
 
 function PlanningRailMeal({
   meal,
-  isAssigned,
   isPicked,
   onPick
 }: {
   meal: Meal;
-  isAssigned: boolean;
   isPicked: boolean;
   onPick: () => void;
 }) {
@@ -1549,7 +1514,6 @@ function PlanningRailMeal({
       className={[
         "rail-meal",
         isPicked ? "picked" : "",
-        isAssigned ? "assigned" : "",
         isDragging ? "dragging" : ""
       ].filter(Boolean).join(" ")}
       ref={setNodeRef}
@@ -1593,7 +1557,7 @@ function PlanningWeekdaySlot({
 
   return (
     <div
-      className={["weekday-slot", isReady ? "ready" : "", isOver ? "drop-over" : ""].filter(Boolean).join(" ")}
+      className={["weekday-slot", `weekday-slot-${day}`, isReady ? "ready" : "", isOver ? "drop-over" : ""].filter(Boolean).join(" ")}
       data-weekday-slot={day}
       onClick={onClick}
       ref={setNodeRef}

@@ -549,66 +549,6 @@ h3 {
   gap: 8px;
 }
 
-.school-menu-strip {
-  border-radius: 18px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.62), rgba(255, 255, 255, 0) 48%),
-    linear-gradient(180deg, #e1fff1, #c6efff);
-  border: 2px solid rgba(255, 255, 255, 0.72);
-  padding: 10px;
-  display: grid;
-  gap: 8px;
-  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.78);
-}
-
-.school-menu-title {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: center;
-}
-
-.school-menu-title span {
-  color: #687873;
-  font-size: 0.72rem;
-  font-weight: 800;
-}
-
-.school-menu-days {
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(150px, 1fr);
-  gap: 8px;
-  overflow-x: auto;
-}
-
-.school-menu-day {
-  min-height: 90px;
-  border-radius: 14px;
-  background: #fffdf7;
-  padding: 8px;
-  display: grid;
-  align-content: start;
-  gap: 4px;
-  border: 1px solid rgba(36, 107, 255, 0.16);
-}
-
-.school-menu-day strong {
-  color: var(--game-red);
-  font-size: 0.8rem;
-}
-
-.school-menu-day span,
-.school-menu-day small {
-  color: #52635f;
-  font-size: 0.76rem;
-  line-height: 1.2;
-}
-
-.school-menu-day small {
-  color: #248959;
-}
-
 .filter-tab {
   min-height: 40px;
   background:
@@ -626,6 +566,7 @@ h3 {
 
 .planning-grid {
   min-height: 0;
+  height: min(620px, calc(100dvh - 282px));
   display: grid;
   grid-template-columns: minmax(120px, 0.82fr) minmax(0, 1.18fr);
   gap: 10px;
@@ -633,12 +574,14 @@ h3 {
 }
 
 .meal-rail {
-  max-height: calc(100vh - 320px);
+  min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
   display: grid;
   align-content: start;
   gap: 8px;
-  padding-right: 2px;
+  padding: 0 4px 8px 0;
 }
 
 .rail-meal {
@@ -710,11 +653,6 @@ h3 {
   white-space: nowrap;
 }
 
-.rail-meal.assigned {
-  filter: grayscale(1);
-  opacity: 0.42;
-}
-
 .rail-meal.dragging,
 .slot-meal.dragging {
   opacity: 0.55;
@@ -728,23 +666,37 @@ h3 {
 }
 
 .weekday-dropzone {
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
   display: grid;
   gap: 8px;
+  padding: 0 4px 8px 0;
 }
 
 .weekday-slot {
+  --weekday-top: #35d6ff;
+  --weekday-bottom: #20c96f;
+  --weekday-soft: #c8f4dc;
   min-height: 112px;
   border: 2px solid rgba(255, 255, 255, 0.78);
   border-radius: 18px;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.68), rgba(255, 255, 255, 0) 44%),
-    linear-gradient(180deg, #fff8dc, #dff9ff);
+    linear-gradient(180deg, #fff8dc, var(--weekday-soft));
   padding: 10px;
   display: grid;
   grid-template-rows: auto 1fr auto;
   gap: 8px;
   box-shadow: 0 5px 0 rgba(39, 70, 160, 0.14);
 }
+
+.weekday-slot-monday { --weekday-top: #35d6ff; --weekday-bottom: #20c96f; --weekday-soft: #c8f4dc; }
+.weekday-slot-tuesday { --weekday-top: #ff8bc2; --weekday-bottom: #ff315e; --weekday-soft: #ffd2e2; }
+.weekday-slot-wednesday { --weekday-top: #8d9cff; --weekday-bottom: #4f64f4; --weekday-soft: #d7dcff; }
+.weekday-slot-thursday { --weekday-top: #ffe56c; --weekday-bottom: #ff9e24; --weekday-soft: #ffe6ad; }
+.weekday-slot-friday { --weekday-top: #b36cff; --weekday-bottom: #6922c8; --weekday-soft: #dfc7ff; }
 
 .weekday-slot.ready {
   border-color: rgba(255, 49, 94, 0.76);
@@ -777,16 +729,25 @@ h3 {
 
 .weekday-slot-head {
   min-height: 32px;
+  padding: 5px 8px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  color: #fff;
+  border-radius: 11px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0) 44%),
+    linear-gradient(135deg, var(--weekday-top), var(--weekday-bottom));
+  text-shadow: 0 1px 1px rgba(20, 35, 90, 0.25);
 }
 
 .weekday-slot-head button {
   width: 30px;
   min-height: 30px;
   padding: 0;
+  background: rgba(255, 255, 255, 0.84);
+  color: #27466a;
 }
 
 .slot-meal {
@@ -2150,20 +2111,13 @@ h3 {
 
 @media (max-width: 559px) {
   .planning-grid {
-    grid-template-columns: 1fr;
+    height: calc(100dvh - 262px);
+    grid-template-columns: minmax(132px, 0.82fr) minmax(0, 1.18fr);
+    gap: 8px;
   }
 
   .meal-rail {
-    max-height: none;
-    grid-auto-flow: column;
-    grid-auto-columns: minmax(142px, 0.72fr);
-    overflow-x: auto;
-    overflow-y: hidden;
-    padding: 0 0 8px;
-  }
-
-  .weekday-dropzone {
-    grid-template-columns: 1fr;
+    padding-right: 2px;
   }
 
   .weekday-slot {
