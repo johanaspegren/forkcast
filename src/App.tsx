@@ -15,7 +15,7 @@ const titleCase = (value: string) => value.slice(0, 1).toUpperCase() + value.sli
 const heartBurstOffsets = [-28, -18, -8, 4, 14, 24, 34, 44];
 const SAVED_WEEKS_KEY = "forkcast.savedWeeks";
 const PLAYER_PROFILE_KEY = "forkcast.playerProfile";
-const DEBUG_BUILD_MARKER = "ANDROID-PLANNER-SCROLL-2026-08-17-B";
+const DEBUG_BUILD_MARKER = "ANDROID-RUSH-LANDSCAPE-2026-08-17-A";
 const avatarChoices = ["🦄", "🐱", "🦊", "🐼", "🐸", "🐵", "🐯", "🐰", "🥘", "🍕", "🌮", "🍜"];
 const defaultCrewLabels = { cook: "Cook", clean: "Cleaner" };
 const defaultDayStatusLabels = { today: "Today", reserved: "Reserved", leading: "Leading", open: "Open" };
@@ -756,32 +756,37 @@ export default function App() {
   }
 
   const proposals = Object.values(session.proposals);
+  const isRushActive = session.phase === "REALTIME_RUSH";
 
   return (
-    <main className="shell">
+    <main className={isRushActive ? "shell rush-shell" : "shell"}>
       <DebugBuildBadge />
-      <header className="topbar">
-        <div>
-          <p className="eyebrow">{session.join_code}</p>
-          <h1>Forkcast</h1>
-        </div>
-        {session.phase !== "COMPLETE" && <VotingPoints state={currentPlayerState} />}
-      </header>
+      {!isRushActive && (
+        <header className="topbar">
+          <div>
+            <p className="eyebrow">{session.join_code}</p>
+            <h1>Forkcast</h1>
+          </div>
+          {session.phase !== "COMPLETE" && <VotingPoints state={currentPlayerState} />}
+        </header>
+      )}
 
-      {isAdmin && (
+      {isAdmin && !isRushActive && (
         <button className="delete-current-session" onClick={() => deleteSession(session.id, playerId)} type="button">
           Delete Session
         </button>
       )}
 
-      <div className="phase-track">
-        <span>{session.phase.replace("_", " ")}</span>
-        <strong>{session.game_mode === "REALTIME_RUSH" ? "Rush" : `${Object.keys(session.players).length} / ${session.max_players}`}</strong>
-      </div>
+      {!isRushActive && (
+        <div className="phase-track">
+          <span>{session.phase.replace("_", " ")}</span>
+          <strong>{session.game_mode === "REALTIME_RUSH" ? "Rush" : `${Object.keys(session.players).length} / ${session.max_players}`}</strong>
+        </div>
+      )}
 
       {error && <p className="error">{error}</p>}
 
-      {session.players[playerId] && Object.values(session.players).some((player) => player.simulated) && (
+      {!isRushActive && session.players[playerId] && Object.values(session.players).some((player) => player.simulated) && (
         <button
           className="simulation-button"
           disabled={!canSimulateCurrentTurn}
@@ -1832,14 +1837,6 @@ function RealtimeRush({
         </div>
       )}
 
-      <div className="rush-headline">
-        <Sparkles size={34} />
-        <div>
-          <p className="eyebrow">Realtime Rush</p>
-          <h2>Lovebomb dinner into place</h2>
-        </div>
-      </div>
-
       <div className="day-stack rush-days">
         {session.days.map((day) => {
           const proposals = Object.values(session.proposals).filter((proposal) => proposal.day === day);
@@ -1888,13 +1885,6 @@ function RealtimeRush({
         })}
       </div>
 
-      {session.turn_log.length > 0 && (
-        <div className="turn-log rush-log">
-          {session.turn_log.slice(0, 5).map((entry, index) => (
-            <p key={`${entry}-${index}`}>{entry}</p>
-          ))}
-        </div>
-      )}
     </section>
   );
 }

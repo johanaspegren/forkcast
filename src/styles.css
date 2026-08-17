@@ -3497,3 +3497,180 @@ h3 {
     align-items: center;
   }
 }
+
+/* A Rush round is an action board in landscape: keep all five days visible and
+   let each day scroll only when it has more than three proposals. */
+@media (orientation: landscape) and (min-width: 640px) {
+  .rush-shell {
+    width: 100%;
+    max-width: none;
+    min-height: 100dvh;
+    padding: 8px 10px;
+  }
+
+  .rush-stage {
+    height: calc(100dvh - 16px);
+    min-height: calc(100dvh - 16px);
+    padding: 52px 8px 8px;
+    gap: 0;
+  }
+
+  .rush-timer {
+    top: max(5px, env(safe-area-inset-top));
+    width: min(calc(100% - 20px), 300px);
+    min-height: 40px;
+    padding: 4px 12px;
+    border-radius: 14px;
+  }
+
+  .rush-timer span {
+    font-size: 0.66rem;
+  }
+
+  .rush-timer strong {
+    font-size: 1.28rem;
+  }
+
+  .rush-days {
+    min-height: 0;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    align-items: stretch;
+    gap: 6px;
+    flex: 1;
+  }
+
+  .rush-day {
+    min-height: 0;
+    align-content: start;
+    gap: 5px;
+    overflow-y: auto;
+    padding: 5px;
+    border-width: 2px;
+    border-radius: 14px;
+    scrollbar-width: thin;
+  }
+
+  .rush-day header {
+    min-height: 32px;
+    padding: 4px 6px;
+    border-radius: 10px;
+  }
+
+  .rush-day h3 {
+    font-size: 0.96rem;
+  }
+
+  .rush-day .locked-label {
+    min-height: 20px;
+    padding: 0 5px;
+    font-size: 0.56rem;
+  }
+
+  .rush-card {
+    grid-template-rows: minmax(0, 1fr) 32px;
+    gap: 4px;
+    height: 76px;
+    padding: 4px;
+    border-width: 1px;
+    border-radius: 10px;
+  }
+
+  .rush-card.leader {
+    box-shadow: inset 0 0 0 2px rgba(255, 236, 74, 0.32), 0 3px 0 rgba(105, 96, 7, 0.18);
+  }
+
+  .rush-card-top {
+    grid-template-columns: minmax(0, 1fr) 34px;
+    gap: 4px;
+  }
+
+  .rush-card .proposal-main {
+    grid-template-columns: 27px minmax(0, 1fr);
+    min-height: 28px;
+    gap: 4px;
+  }
+
+  .rush-card .meal-emoji {
+    font-size: 1.35rem;
+  }
+
+  .rush-card .proposal-main strong {
+    font-size: 0.7rem;
+  }
+
+  .rush-card .proposal-main small,
+  .rush-card .volunteer-line,
+  .rush-leader-rank,
+  .rush-leader-badge,
+  .rush-streak {
+    display: none;
+  }
+
+  .rush-card .proposal-score {
+    width: 34px;
+    min-width: 34px;
+    height: 28px;
+    font-size: 0.82rem;
+  }
+
+  .rush-card .proposal-score img {
+    width: 17px;
+    height: 17px;
+  }
+
+  .rush-actions {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 3px;
+    height: 32px;
+  }
+
+  .rush-icon-button {
+    width: auto;
+    height: 32px;
+    min-height: 32px;
+    border-radius: 9px;
+  }
+
+  .rush-heart svg {
+    width: 21px;
+    height: 21px;
+  }
+
+  .rush-freeze svg,
+  .rush-chore svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  .rush-freeze span {
+    right: -4px;
+    top: -4px;
+    min-width: 14px;
+    height: 14px;
+    border-width: 1px;
+    font-size: 0.5rem;
+  }
+
+  .heart-burst {
+    right: 42px;
+    bottom: 30px;
+  }
+
+  .heart-burst span {
+    width: 22px;
+    height: 22px;
+    border-width: 1px;
+  }
+
+  .heart-burst b {
+    font-size: 0.76rem;
+  }
+
+  .heart-burst i {
+    right: -4px;
+    bottom: -5px;
+    width: 12px;
+    height: 12px;
+    font-size: 0.44rem;
+  }
+}
