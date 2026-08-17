@@ -1,4 +1,4 @@
-import { DndContext, DragEndEvent, DragOverlay, DragStartEvent, MouseSensor, TouchSensor, useDraggable, useDroppable, useSensor, useSensors } from "@dnd-kit/core";
+import { DndContext, DragEndEvent, DragOverlay, DragOverEvent, DragStartEvent, KeyboardSensor, PointerSensor, useDraggable, useDroppable, useSensor, useSensors } from "@dnd-kit/core";
 import { Bot, Check, ChevronLeft, ChevronRight, CookingPot, FastForward, GripVertical, Heart, Info, Minus, Plus, Save, Snowflake, Sparkles, Users } from "lucide-react";
 import QRCode from "qrcode";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -14,7 +14,7 @@ const titleCase = (value: string) => value.slice(0, 1).toUpperCase() + value.sli
 const heartBurstOffsets = [-28, -18, -8, 4, 14, 24, 34, 44];
 const SAVED_WEEKS_KEY = "forkcast.savedWeeks";
 const PLAYER_PROFILE_KEY = "forkcast.playerProfile";
-const DEBUG_BUILD_MARKER = "ANDROID-DRAG-CHECK-2026-08-13-A";
+const DEBUG_BUILD_MARKER = "ANDROID-DRAG-HANDLE-2026-08-16-A";
 const avatarChoices = ["🦄", "🐱", "🦊", "🐼", "🐸", "🐵", "🐯", "🐰", "🥘", "🍕", "🌮", "🍜"];
 const SCHOOL_MENU_URL = "https://menu.matildaplatform.com/meals/week/6752f62a2554115c468f8cb8_forskola-skola";
 const defaultCrewLabels = { cook: "Cook", clean: "Cleaner" };
@@ -1300,8 +1300,8 @@ function MealPlanning({
   const [pickedFromDay, setPickedFromDay] = useState<string | null>(null);
   const [activePlanningDrag, setActivePlanningDrag] = useState<{ mealId: string; fromDay: string | null } | null>(null);
   const planningSensors = useSensors(
-    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 120, tolerance: 8 } })
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor)
   );
   const [assigned, setAssigned] = useState<Record<string, string | null>>(() => {
     const initial = Object.fromEntries(session.days.map((day, index) => [day, state.selected_meals[index] ?? null]));
@@ -1408,6 +1408,7 @@ function MealPlanning({
         <div>
           <h2>Plan the week</h2>
           <p className="muted">{plannedCount} / {session.max_selected_meals} suggestions set · {remaining} points left</p>
+          <p className="planning-drag-hint">Tap a meal, then tap a day — or drag its grip.</p>
         </div>
       </div>
       {schoolMenu && <SchoolLunchStrip menu={schoolMenu} />}
@@ -1527,7 +1528,7 @@ function PlanningRailMeal({
   isPicked: boolean;
   onPick: () => void;
 }) {
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+  const { attributes, listeners, setActivatorNodeRef, setNodeRef, transform, isDragging } = useDraggable({
     id: `plan-meal:${meal.id}`,
     data: { mealId: meal.id, fromDay: null }
   });
@@ -1536,33 +1537,36 @@ function PlanningRailMeal({
     : undefined;
 
   return (
-    <button
-      key={meal.id}
+    <div
       className={[
         "rail-meal",
         isPicked ? "picked" : "",
         isAssigned ? "assigned" : "",
         isDragging ? "dragging" : ""
       ].filter(Boolean).join(" ")}
-      onClick={onPick}
       ref={setNodeRef}
       style={style}
-      type="button"
     >
-      <span>{meal.emoji}</span>
-      <strong>{meal.name}</strong>
-      <small>{meal.tags.join(" · ")}</small>
-      <span
+      <button className="rail-meal-main" onClick={onPick} type="button">
+        <span>{meal.emoji}</span>
+        <span>
+          <strong>{meal.name}</strong>
+          <small>{meal.tags.join(" · ")}</small>
+        </span>
+      </button>
+      <button
         aria-label={`Drag ${meal.name}`}
         className="meal-drag-handle"
         onClick={(event) => event.stopPropagation()}
+        ref={setActivatorNodeRef}
         title="Drag"
+        type="button"
         {...attributes}
         {...listeners}
       >
         <GripVertical size={18} aria-hidden="true" />
-      </span>
-    </button>
+      </button>
+    </div>
   );
 }
 
@@ -1604,7 +1608,7 @@ function PlanningAssignedMeal({
   isPicked: boolean;
   onPick: () => void;
 }) {
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+  const { attributes, listeners, setActivatorNodeRef, setNodeRef, transform, isDragging } = useDraggable({
     id: `plan-assigned:${day}`,
     data: { mealId, fromDay: day }
   });
@@ -1615,20 +1619,31 @@ function PlanningAssignedMeal({
   return (
     <div
       className={["slot-meal", isPicked ? "picked" : "", isDragging ? "dragging" : ""].filter(Boolean).join(" ")}
-      onClick={(event) => {
-        event.stopPropagation();
-        onPick();
-      }}
       ref={setNodeRef}
       style={style}
-      {...attributes}
-      {...listeners}
     >
-      <span>{meal.emoji}</span>
-      <div>
+      <button className="slot-meal-main" onClick={(event) => {
+        event.stopPropagation();
+        onPick();
+      }} type="button">
+        <span>{meal.emoji}</span>
+        <span>
         <strong>{meal.name}</strong>
         <small>{meal.tags.join(" · ")}</small>
-      </div>
+        </span>
+      </button>
+      <button
+        aria-label={`Drag ${meal.name} from ${titleCase(day)}`}
+        className="meal-drag-handle slot-meal-drag-handle"
+        onClick={(event) => event.stopPropagation()}
+        ref={setActivatorNodeRef}
+        title="Drag"
+        type="button"
+        {...attributes}
+        {...listeners}
+      >
+        <GripVertical size={18} aria-hidden="true" />
+      </button>
     </div>
   );
 }
@@ -2159,8 +2174,8 @@ function FinalForkcast({
   const [pickedReorderDay, setPickedReorderDay] = useState("");
   const [activeFinalDrag, setActiveFinalDrag] = useState("");
   const finalSensors = useSensors(
-    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 180, tolerance: 10 } })
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor)
   );
   const [saved, setSaved] = useState(() => {
     const savedWeeks = JSON.parse(localStorage.getItem(SAVED_WEEKS_KEY) ?? "{}") as Record<string, { session_id?: string }>;
@@ -2294,7 +2309,7 @@ function FinalForkcast({
     setActiveFinalDrag(sourceDay);
   }
 
-  function handleFinalDragOver(event: DragEndEvent) {
+  function handleFinalDragOver(event: DragOverEvent) {
     const targetDay = String(event.over?.id ?? "").replace("final-day:", "");
     setDragOverDay(targetDay && targetDay !== draggingDay ? targetDay : "");
   }
@@ -2346,7 +2361,7 @@ function FinalForkcast({
           ))}
         </div>
       )}
-      {canReorder && <p className="final-reorder-hint">Drag a meal onto another day, or tap one day and then another, to swap before saving.</p>}
+      {canReorder && <p className="final-reorder-hint">Drag a day by its grip onto another day, or tap one day and then another, to swap before saving.</p>}
       <DndContext
         sensors={finalSensors}
         onDragStart={handleFinalDragStart}
@@ -2459,10 +2474,24 @@ function FinalDayCard({
         droppable.setNodeRef(node);
       }}
       style={style}
-      {...draggable.attributes}
-      {...draggable.listeners}
     >
-      <h3>{titleCase(day)}</h3>
+      <div className="final-day-heading">
+        <h3>{titleCase(day)}</h3>
+        {canReorder && (
+          <button
+            aria-label={`Drag ${titleCase(day)}`}
+            className="final-drag-handle"
+            onClick={(event) => event.stopPropagation()}
+            ref={draggable.setActivatorNodeRef}
+            title="Drag"
+            type="button"
+            {...draggable.attributes}
+            {...draggable.listeners}
+          >
+            <GripVertical size={20} aria-hidden="true" />
+          </button>
+        )}
+      </div>
       <div className="locked-meal final-locked-meal">
         <div className="final-meal-title">
           <span className="meal-emoji">{meal?.emoji}</span>

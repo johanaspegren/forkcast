@@ -142,6 +142,20 @@ Then run:
 sudo journalctl -u forkcast.service -f
 ```
 
+### Update or Restart the Service
+
+After updating the project on the Pi, rebuild the phone UI and restart the running service:
+
+```bash
+cd ~/forkcast-2
+git pull
+npm run build
+sudo systemctl restart forkcast.service
+sudo systemctl status forkcast.service
+```
+
+Use `sudo systemctl daemon-reload` only after changing `deploy/forkcast.service`; `sudo systemctl enable --now forkcast.service` is needed only for the initial setup. To inspect the service after a restart, run `sudo journalctl -u forkcast.service -f`.
+
 ## Simulation Mode
 
 Use **Create Simulation** on the first screen to create a session as yourself plus three simulated players: Anna, Elsa, and Oscar.
