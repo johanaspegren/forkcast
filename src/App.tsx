@@ -15,7 +15,7 @@ const titleCase = (value: string) => value.slice(0, 1).toUpperCase() + value.sli
 const heartBurstOffsets = [-28, -18, -8, 4, 14, 24, 34, 44];
 const SAVED_WEEKS_KEY = "forkcast.savedWeeks";
 const PLAYER_PROFILE_KEY = "forkcast.playerProfile";
-const DEBUG_BUILD_MARKER = "ANDROID-LIVE-HEARTS-2026-08-17-A";
+const DEBUG_BUILD_MARKER = "ANDROID-LIVE-HEARTS-2026-08-17-B";
 const avatarChoices = ["🦄", "🐱", "🦊", "🐼", "🐸", "🐵", "🐯", "🐰", "🥘", "🍕", "🌮", "🍜"];
 const SCHOOL_MENU_URL = "https://menu.matildaplatform.com/meals/week/6752f62a2554115c468f8cb8_forskola-skola";
 const defaultCrewLabels = { cook: "Cook", clean: "Cleaner" };
@@ -1895,11 +1895,15 @@ function RealtimeRush({
                 const meal = meals[proposal.meal_id];
                 const cookCommitted = proposal.chef_volunteers.includes(playerId);
                 const cleanCommitted = proposal.cleanup_volunteers.includes(playerId);
+                const hasCookVolunteer = proposal.chef_volunteers.length > 0;
+                const hasCleanVolunteer = proposal.cleanup_volunteers.length > 0;
                 return (
                   <RushProposalCard
                     key={proposal.id}
                     cleanCommitted={cleanCommitted}
                     cookCommitted={cookCommitted}
+                    hasCleanVolunteer={hasCleanVolunteer}
+                    hasCookVolunteer={hasCookVolunteer}
                     isFrozen={isFrozen}
                     initialHearts={session.realtime_stats.hearts_by_proposal[proposal.id] ?? 0}
                     initialLeaderId={leaderId}
@@ -1935,6 +1939,8 @@ function RushProposalCard({
   cleanCommitted,
   cookCommitted,
   frozenSeconds,
+  hasCleanVolunteer,
+  hasCookVolunteer,
   initialHearts,
   initialLeaderId,
   isFrozen,
@@ -1950,6 +1956,8 @@ function RushProposalCard({
   cleanCommitted: boolean;
   cookCommitted: boolean;
   frozenSeconds: number;
+  hasCleanVolunteer: boolean;
+  hasCookVolunteer: boolean;
   initialHearts: number;
   initialLeaderId: string;
   isFrozen: boolean;
@@ -2023,20 +2031,20 @@ function RushProposalCard({
           {(isFrozen || usedFreeze) && <span>{isFrozen ? frozenSeconds : "✓"}</span>}
         </button>
         <button
-          className={cookCommitted ? "rush-icon-button rush-chore active" : "rush-icon-button rush-chore"}
+          className={hasCookVolunteer ? "rush-icon-button rush-chore active" : "rush-icon-button rush-chore"}
           disabled={!rushHasStarted}
           aria-label={cookCommitted ? "Stop cooking this meal" : "Cook this meal"}
-          title={cookCommitted ? "Un-cook" : "Cook"}
+          title={cookCommitted ? "Un-cook" : hasCookVolunteer ? "Someone will cook" : "Cook"}
           aria-pressed={cookCommitted}
           onClick={() => onPlayCard({ card: "ILL_COOK", proposal_id: proposal.id })}
         >
           <CookingPot size={22} aria-hidden="true" />
         </button>
         <button
-          className={cleanCommitted ? "rush-icon-button rush-chore active" : "rush-icon-button rush-chore"}
+          className={hasCleanVolunteer ? "rush-icon-button rush-chore active" : "rush-icon-button rush-chore"}
           disabled={!rushHasStarted}
           aria-label={cleanCommitted ? "Stop cleaning this meal" : "Clean this meal"}
-          title={cleanCommitted ? "Un-clean" : "Clean"}
+          title={cleanCommitted ? "Un-clean" : hasCleanVolunteer ? "Someone will clean" : "Clean"}
           aria-pressed={cleanCommitted}
           onClick={() => onPlayCard({ card: "ILL_CLEAN", proposal_id: proposal.id })}
         >
