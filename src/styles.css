@@ -2112,12 +2112,41 @@ h3 {
 @media (max-width: 559px) {
   .planning-grid {
     height: calc(100dvh - 262px);
-    grid-template-columns: minmax(132px, 0.82fr) minmax(0, 1.18fr);
+    grid-template-columns: minmax(152px, 0.9fr) minmax(0, 1.1fr);
     gap: 8px;
   }
 
   .meal-rail {
     padding-right: 2px;
+  }
+
+  .rail-meal {
+    min-height: 58px;
+    padding: 4px;
+    grid-template-columns: minmax(0, 1fr) 48px;
+    gap: 4px;
+  }
+
+  .rail-meal-main {
+    min-height: 48px;
+    grid-template-columns: 26px minmax(0, 1fr);
+    gap: 4px;
+  }
+
+  .rail-meal-main > span:first-child {
+    font-size: 1.3rem;
+  }
+
+  .rail-meal-main strong {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.82rem;
+  }
+
+  .rail-meal small {
+    display: none;
   }
 
   .weekday-slot {
