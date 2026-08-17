@@ -3501,6 +3501,116 @@ h3 {
 /* A Rush round is an action board in landscape: keep all five days visible and
    let each day scroll only when it has more than three proposals. */
 @media (orientation: landscape) and (min-width: 640px) {
+  .join-screen {
+    width: min(100%, 1120px);
+    min-height: 100dvh;
+    grid-template-columns: minmax(130px, 0.65fr) minmax(220px, 1fr) minmax(220px, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+    align-content: stretch;
+    align-items: stretch;
+    gap: 10px;
+    padding: 10px;
+  }
+
+  .join-screen .brand-panel {
+    min-height: 0;
+    justify-content: center;
+    padding: 12px 4px;
+  }
+
+  .join-screen .brand-mark {
+    width: 52px;
+    height: 52px;
+    margin-bottom: 10px;
+    border-radius: 17px;
+  }
+
+  .join-screen .brand-mark svg {
+    width: 25px;
+    height: 25px;
+  }
+
+  .join-screen .brand-sparkles {
+    gap: 4px;
+    margin: -8px 0 7px 30px;
+  }
+
+  .join-screen .brand-sparkles img {
+    width: 23px;
+    height: 23px;
+  }
+
+  .join-screen .brand-panel h1 {
+    font-size: clamp(1.75rem, 5vw, 2.3rem);
+  }
+
+  .join-screen .intro {
+    margin-bottom: 0;
+    font-size: 0.82rem;
+    line-height: 1.25;
+  }
+
+  .join-screen .panel {
+    min-height: 0;
+    align-content: start;
+    gap: 7px;
+    padding: 10px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+  }
+
+  .join-screen .panel label {
+    gap: 4px;
+    font-size: 0.76rem;
+  }
+
+  .join-screen .panel input,
+  .join-screen .panel select {
+    min-height: 40px;
+  }
+
+  .join-screen .avatar-picker {
+    gap: 5px;
+  }
+
+  .join-screen .avatar-choice {
+    min-height: 34px;
+    border-radius: 11px;
+    font-size: 1.05rem;
+  }
+
+  .join-screen .panel > button {
+    min-height: 40px;
+  }
+
+  .join-screen .active-session-list {
+    gap: 5px;
+  }
+
+  .join-screen .active-session-list .eyebrow {
+    margin-bottom: 0;
+  }
+
+  .join-screen .active-session-row {
+    gap: 5px;
+  }
+
+  .join-screen .active-session-button {
+    min-height: 52px;
+    gap: 1px 6px;
+    padding: 6px 8px;
+  }
+
+  .join-screen .active-session-button small {
+    font-size: 0.66rem;
+  }
+
+  .join-screen .delete-session-button {
+    width: 68px;
+    min-height: 40px;
+    font-size: 0.68rem;
+  }
+
   .rush-shell {
     width: 100%;
     max-width: none;

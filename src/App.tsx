@@ -15,7 +15,7 @@ const titleCase = (value: string) => value.slice(0, 1).toUpperCase() + value.sli
 const heartBurstOffsets = [-28, -18, -8, 4, 14, 24, 34, 44];
 const SAVED_WEEKS_KEY = "forkcast.savedWeeks";
 const PLAYER_PROFILE_KEY = "forkcast.playerProfile";
-const DEBUG_BUILD_MARKER = "ANDROID-RUSH-LANDSCAPE-2026-08-17-A";
+const DEBUG_BUILD_MARKER = "ANDROID-LANDSCAPE-OPENING-2026-08-17-A";
 const avatarChoices = ["🦄", "🐱", "🦊", "🐼", "🐸", "🐵", "🐯", "🐰", "🥘", "🍕", "🌮", "🍜"];
 const defaultCrewLabels = { cook: "Cook", clean: "Cleaner" };
 const defaultDayStatusLabels = { today: "Today", reserved: "Reserved", leading: "Leading", open: "Open" };
