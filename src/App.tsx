@@ -15,12 +15,30 @@ const titleCase = (value: string) => value.slice(0, 1).toUpperCase() + value.sli
 const heartBurstOffsets = [-28, -18, -8, 4, 14, 24, 34, 44];
 const SAVED_WEEKS_KEY = "forkcast.savedWeeks";
 const PLAYER_PROFILE_KEY = "forkcast.playerProfile";
+const MANUAL_DISPLAY_WEEKS_KEY = "forkcast.manualDisplayWeeks";
 const DEBUG_BUILD_MARKER = "ANDROID-LANDSCAPE-OPENING-2026-08-17-A";
 const avatarChoices = ["🦄", "🐱", "🦊", "🐼", "🐸", "🐵", "🐯", "🐰", "🥘", "🍕", "🌮", "🍜"];
+const manualDisplayDays = ["monday", "tuesday", "wednesday", "thursday", "friday"];
 const defaultCrewLabels = { cook: "Cook", clean: "Cleaner" };
 const defaultDayStatusLabels = { today: "Today", reserved: "Reserved", leading: "Leading", open: "Open" };
 const defaultNutritionLabels = { calories: "cals", protein: "prots" };
 const defaultStatusLabels = { mock: "Mock demo", live: "Updates live" };
+
+type ManualDisplayDayPlan = {
+  meal_name: string;
+  meal_emoji: string;
+  chef: string[];
+  cleanup: string[];
+};
+
+type ManualDisplayWeek = {
+  id: string;
+  year: number;
+  week: number;
+  days: string[];
+  plan: Record<string, ManualDisplayDayPlan | null>;
+  updated_at: string;
+};
 
 function getIsoWeek(date = new Date()) {
   const normalized = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
@@ -67,6 +85,173 @@ function parseWeekParam(value: string | null, fallbackYear: number) {
     return { year: fallbackYear, week };
   }
   return null;
+}
+
+function splitCrewNames(input: string) {
+  return input
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
+function findMealByName(meals: Record<string, Meal>, mealName: string) {
+  const normalized = mealName.trim().toLowerCase();
+  return Object.values(meals).find((meal) => meal.name.trim().toLowerCase() === normalized);
+}
+
+function localStorageRead<T>(key: string, fallback: T) {
+  try {
+    return JSON.parse(localStorage.getItem(key) ?? "") as T;
+  } catch {
+    return fallback;
+  }
+}
+
+function readManualDisplayWeeks() {
+  return localStorageRead<Record<string, ManualDisplayWeek>>(MANUAL_DISPLAY_WEEKS_KEY, {});
+}
+
+function writeManualDisplayWeeks(weeks: Record<string, ManualDisplayWeek>) {
+  localStorage.setItem(MANUAL_DISPLAY_WEEKS_KEY, JSON.stringify(weeks));
+}
+
+function createEmptyManualDisplayWeek(year: number, week: number, days = manualDisplayDays): ManualDisplayWeek {
+  return {
+    id: weekId(year, week),
+    year,
+    week,
+    days,
+    plan: Object.fromEntries(days.map((day) => [day, null])),
+    updated_at: new Date().toISOString()
+  };
+}
+
+function manualMealId(mealName: string) {
+  return `manual-${slugId(mealName)}`;
+}
+
+function manualDisplayWeekToMeals(week: ManualDisplayWeek): Meal[] {
+  const seen = new Set<string>();
+  const meals: Meal[] = [];
+  for (const day of week.days) {
+    const entry = week.plan[day];
+    if (!entry || !entry.meal_name.trim()) continue;
+    const mealId = manualMealId(entry.meal_name);
+    if (seen.has(mealId)) continue;
+    seen.add(mealId);
+    meals.push({
+      id: mealId,
+      name: entry.meal_name,
+      emoji: entry.meal_emoji || "🍽️",
+      tags: ["manual"],
+      protein_type: null,
+      minced_meat: false,
+      fish: false
+    });
+  }
+  return meals;
+}
+
+function manualDisplayWeekToSession(week: ManualDisplayWeek): Session {
+  const players: Session["players"] = {};
+  const nameToId = new Map<string, string>();
+  let manualPlayerIndex = 0;
+  const getPlayerId = (name: string) => {
+    const normalized = name.trim().toLowerCase();
+    const existing = nameToId.get(normalized);
+    if (existing) return existing;
+    let id = slugId(name);
+    while (players[id]) {
+      id = `${id}-${manualPlayerIndex + 1}`;
+      manualPlayerIndex += 1;
+    }
+    const avatar = avatarChoices[manualPlayerIndex % avatarChoices.length] ?? "🍽️";
+    players[id] = { id, name: name.trim(), avatar, favourite_meals: [], simulated: false };
+    nameToId.set(normalized, id);
+    manualPlayerIndex += 1;
+    return id;
+  };
+
+  const weekEntries = Object.fromEntries(
+    week.days.map((day) => {
+      const entry = week.plan[day];
+      if (!entry || !entry.meal_name.trim()) return [day, null];
+      return [
+        day,
+        {
+          meal_id: manualMealId(entry.meal_name),
+          chef: entry.chef.map(getPlayerId),
+          cleanup: entry.cleanup.map(getPlayerId),
+          rule_exceptions: []
+        }
+      ];
+    })
+  );
+
+  return {
+    id: `manual-week-${week.id}`,
+    join_code: `MANUAL-${String(week.week).padStart(2, "0")}`,
+    phase: "COMPLETE",
+    game_mode: "CLASSIC_DRAFT",
+    days: week.days,
+    players,
+    player_state: {},
+    proposals: {},
+    week: weekEntries,
+    rules: [],
+    turn_order: Object.keys(players),
+    current_turn_index: 0,
+    turn_log: [`Manual menu for Week ${week.week}.`],
+    max_players: Math.max(4, Object.keys(players).length),
+    starting_voting_points: 10,
+    max_selected_meals: 3,
+    max_action_cards_played: 2,
+    rule_overrides: [],
+    general_assembly: {},
+    general_assembly_threshold: 4,
+    realtime_started_at: null,
+    realtime_ends_at: null,
+    realtime_freeze_until: {},
+    realtime_freezes_used: [],
+    realtime_override_window: null,
+    realtime_stats: {
+      hearts_by_player: {},
+      hearts_by_proposal: {},
+      own_hearts_by_player: {},
+      freezes_by_player: {},
+      awards: []
+    }
+  };
+}
+
+function sessionToManualDisplayWeek(session: Session, meals: Record<string, Meal>, year: number, week: number): ManualDisplayWeek {
+  return {
+    id: weekId(year, week),
+    year,
+    week,
+    days: session.days,
+    plan: Object.fromEntries(
+      session.days.map((day) => {
+        const entry = session.week[day];
+        if (!entry) return [day, null];
+        const meal = meals[entry.meal_id];
+        return [
+          day,
+          {
+            meal_name: meal?.name ?? "",
+            meal_emoji: meal?.emoji ?? "🍽️",
+            chef: entry.chef.map((id) => session.players[id]?.name ?? id),
+            cleanup: entry.cleanup.map((id) => session.players[id]?.name ?? id)
+          }
+        ];
+      })
+    ),
+    updated_at: new Date().toISOString()
+  };
+}
+
+function isManualDisplaySession(session: Session | null) {
+  return Boolean(session?.id.startsWith("manual-week-"));
 }
 
 function slugId(value: string) {
@@ -484,6 +669,15 @@ export default function App() {
   const [activeSessions, setActiveSessions] = useState<Session[]>([]);
   const [error, setError] = useState("");
 
+  const mergeMeals = (nextMeals: Meal[]) => {
+    if (!nextMeals.length) return;
+    setMeals((currentMeals) => {
+      const merged = new Map(currentMeals.map((meal) => [meal.id, meal]));
+      for (const meal of nextMeals) merged.set(meal.id, meal);
+      return Array.from(merged.values());
+    });
+  };
+
   useEffect(() => {
     if (isMockDisplay) return;
     api.meals().then((value) => setMeals(value as Meal[])).catch((err) => setError(err.message));
@@ -496,7 +690,12 @@ export default function App() {
       const selectedWeek = requestedWeek ?? getDisplayWeek();
       api.getSavedWeek(weekId(selectedWeek.year, selectedWeek.week))
         .then((savedWeek) => setSession(savedWeekToSession(savedWeek)))
-        .catch(() => undefined);
+        .catch(() => {
+          const manualWeek = readManualDisplayWeeks()[weekId(selectedWeek.year, selectedWeek.week)];
+          if (!manualWeek) return;
+          mergeMeals(manualDisplayWeekToMeals(manualWeek));
+          setSession(manualDisplayWeekToSession(manualWeek));
+        });
     }
   }, [isDisplayMode, isMockDisplay, requestedWeek?.week, requestedWeek?.year, sessionId]);
 
@@ -561,6 +760,11 @@ export default function App() {
   }, []);
 
   if (isDisplayMode) {
+    const applyManualWeek = (manualWeek: ManualDisplayWeek) => {
+      mergeMeals(manualDisplayWeekToMeals(manualWeek));
+      setSession(manualDisplayWeekToSession(manualWeek));
+    };
+
     return (
         <DisplayScreen
           session={session}
@@ -571,6 +775,13 @@ export default function App() {
           onLoad={() => run(() => api.getSession(joinCode))}
           onLoadMock={() => setSession(MOCK_WEEKLY_SESSION)}
           onSavedWeekLoad={setSession}
+          onManualWeekLoad={applyManualWeek}
+          onManualWeekSave={(manualWeek) => {
+            const manualWeeks = readManualDisplayWeeks();
+            manualWeeks[manualWeek.id] = manualWeek;
+            writeManualDisplayWeeks(manualWeeks);
+            applyManualWeek(manualWeek);
+          }}
           requestedWeek={requestedWeek}
         />
       );
@@ -955,6 +1166,8 @@ function DisplayScreen({
   onLoad,
   onLoadMock,
   onSavedWeekLoad,
+  onManualWeekLoad,
+  onManualWeekSave,
   requestedWeek
 }: {
   session: Session | null;
@@ -965,6 +1178,8 @@ function DisplayScreen({
   onLoad: () => void;
   onLoadMock: () => void;
   onSavedWeekLoad: (session: Session | null) => void;
+  onManualWeekLoad: (manualWeek: ManualDisplayWeek) => void;
+  onManualWeekSave: (manualWeek: ManualDisplayWeek) => void;
   requestedWeek: { year: number; week: number } | null;
 }) {
   const displayParams = new URLSearchParams(window.location.search);
@@ -976,6 +1191,11 @@ function DisplayScreen({
   );
   const [activeIndex, setActiveIndex] = useState(0);
   const [selectedDay, setSelectedDay] = useState("");
+  const [manualMealName, setManualMealName] = useState("");
+  const [manualMealEmoji, setManualMealEmoji] = useState("🍽️");
+  const [manualCookers, setManualCookers] = useState("");
+  const [manualCleaners, setManualCleaners] = useState("");
+  const [manualEditorError, setManualEditorError] = useState("");
   const [displayWeekOffset, setDisplayWeekOffset] = useState(() => {
     if (!requestedWeek) return getDefaultWeekOffset();
     const currentWeek = getDisplayWeek(0);
@@ -1002,7 +1222,22 @@ function DisplayScreen({
   const displayWeek = getDisplayWeek(displayWeekOffset);
   const displayWeekLabel = `Week ${displayWeek.week} · ${displayWeek.year}`;
   const displayWeekRange = formatShortDateRange(displayWeek.start, displayWeek.end);
+  const displayWeekKey = weekId(displayWeek.year, displayWeek.week);
   const dayLabel = (day: string) => theme.dayNames?.[day] ?? titleCase(day);
+  const manualSession = isManualDisplaySession(session);
+
+  useEffect(() => {
+    if (!session || !manualSession) return;
+    const day = selectedDay && session.days.includes(selectedDay) ? selectedDay : session.days[0] ?? "";
+    if (!day) return;
+    const dayEntry = session.week[day];
+    const dayMeal = dayEntry ? meals[dayEntry.meal_id] : undefined;
+    setManualMealName(dayMeal?.name ?? "");
+    setManualMealEmoji(dayMeal?.emoji ?? "🍽️");
+    setManualCookers((dayEntry?.chef ?? []).map((id) => session.players[id]?.name ?? id).join(", "));
+    setManualCleaners((dayEntry?.cleanup ?? []).map((id) => session.players[id]?.name ?? id).join(", "));
+    setManualEditorError("");
+  }, [manualSession, meals, selectedDay, session]);
 
   async function loadSavedWeekForOffset(nextOffset: number) {
     setDisplayWeekOffset(nextOffset);
@@ -1013,9 +1248,22 @@ function DisplayScreen({
       const savedWeek = await api.getSavedWeek(weekId(selectedWeek.year, selectedWeek.week));
       onSavedWeekLoad(savedWeekToSession(savedWeek));
     } catch (err) {
+      const selectedWeek = getDisplayWeek(nextOffset);
+      const manualWeek = readManualDisplayWeeks()[weekId(selectedWeek.year, selectedWeek.week)];
+      if (manualWeek) {
+        onManualWeekLoad(manualWeek);
+        setSavedWeekError("");
+        return;
+      }
       onSavedWeekLoad(null);
-      setSavedWeekError(`No saved Forkcast for Week ${getDisplayWeek(nextOffset).week}.`);
+      setSavedWeekError(`No saved Forkcast for Week ${selectedWeek.week}.`);
     }
+  }
+
+  function createManualWeekForOffset() {
+    const nextManualWeek = createEmptyManualDisplayWeek(displayWeek.year, displayWeek.week);
+    onManualWeekSave(nextManualWeek);
+    setSavedWeekError("");
   }
 
   if (!session) {
@@ -1047,6 +1295,7 @@ function DisplayScreen({
             <input value={joinCode} onChange={(event) => onJoinCodeChange(event.target.value)} placeholder="Session ID" />
             <button className="primary" onClick={onLoad}>Load Menu</button>
           </div>
+          <button onClick={createManualWeekForOffset}>Create manual week</button>
           <button className="display-mock-button" onClick={onLoadMock}>Try mock week</button>
           {error && <p className="error">{error}</p>}
         </section>
@@ -1089,6 +1338,78 @@ function DisplayScreen({
   const selectedCleanerIds = selectedEntry?.locked?.cleanup ?? selectedEntry?.proposal?.cleanup_volunteers ?? [];
   const isSelectedToday = selectedEntry?.day === todayEntry?.day;
 
+  function saveManualDay() {
+    const editableSession = session;
+    if (!manualSession || !editableSession || !selectedEntry) return;
+    const mealName = manualMealName.trim();
+    if (!mealName) {
+      setManualEditorError("Add a meal name before saving this day.");
+      return;
+    }
+
+    const cooks = splitCrewNames(manualCookers);
+    const cleaners = splitCrewNames(manualCleaners);
+    const canonicalMeal = findMealByName(meals, mealName);
+    const mealId = canonicalMeal?.id ?? manualMealId(mealName);
+    const mealEmoji = canonicalMeal?.emoji ?? (manualMealEmoji.trim() || "🍽️");
+
+    const nextPlayers: Session["players"] = { ...editableSession.players };
+    const knownNames = new Map(Object.values(nextPlayers).map((player) => [player.name.trim().toLowerCase(), player.id]));
+    const manualNameCounter = { value: Object.keys(nextPlayers).length };
+    const assignPlayer = (name: string) => {
+      const normalized = name.trim().toLowerCase();
+      const existing = knownNames.get(normalized);
+      if (existing) return existing;
+      let id = slugId(name);
+      while (nextPlayers[id]) {
+        manualNameCounter.value += 1;
+        id = `${slugId(name)}-${manualNameCounter.value}`;
+      }
+      const avatar = avatarChoices[manualNameCounter.value % avatarChoices.length] ?? "🍽️";
+      nextPlayers[id] = { id, name: name.trim(), avatar, favourite_meals: [], simulated: false };
+      knownNames.set(normalized, id);
+      manualNameCounter.value += 1;
+      return id;
+    };
+
+    const nextWeekEntry = {
+      meal_id: mealId,
+      chef: cooks.map(assignPlayer),
+      cleanup: cleaners.map(assignPlayer),
+      rule_exceptions: []
+    };
+    const nextSession: Session = {
+      ...editableSession,
+      players: nextPlayers,
+      week: {
+        ...editableSession.week,
+        [selectedEntry.day]: nextWeekEntry
+      },
+      turn_order: Object.keys(nextPlayers),
+      turn_log: [`Manual update for ${titleCase(selectedEntry.day)}.`, ...editableSession.turn_log].slice(0, 25)
+    };
+
+    const nextMeals = canonicalMeal
+      ? []
+      : [{
+          id: mealId,
+          name: mealName,
+          emoji: mealEmoji,
+          tags: ["manual"],
+          protein_type: null,
+          minced_meat: false,
+          fish: false
+        } satisfies Meal];
+    const mergedMeals = {
+      ...meals,
+      ...Object.fromEntries(nextMeals.map((meal) => [meal.id, meal]))
+    };
+    const nextManualWeek = sessionToManualDisplayWeek(nextSession, mergedMeals, displayWeek.year, displayWeek.week);
+
+    onManualWeekSave(nextManualWeek);
+    setManualEditorError("");
+  }
+
   return (
     <main className={`display-shell ${theme.className}`}>
       <section className="display-menu">
@@ -1128,6 +1449,51 @@ function DisplayScreen({
           <span>{theme.tagline}</span>
           <span>{phaseLabel}</span>
         </div>
+
+        {manualSession && (
+          <section className="display-manual-editor" aria-label={`Manual menu editor for ${displayWeekLabel}`}>
+            <p className="display-kicker">Manual Week Plan</p>
+            <div className="display-manual-grid">
+              <label>
+                Dish
+                <input
+                  value={manualMealName}
+                  onChange={(event) => setManualMealName(event.target.value)}
+                  placeholder="Fish tacos"
+                />
+              </label>
+              <label>
+                Emoji
+                <input
+                  value={manualMealEmoji}
+                  onChange={(event) => setManualMealEmoji(event.target.value)}
+                  placeholder="🍽️"
+                />
+              </label>
+              <label>
+                Cooks (comma separated)
+                <input
+                  value={manualCookers}
+                  onChange={(event) => setManualCookers(event.target.value)}
+                  placeholder="Anna, Johan"
+                />
+              </label>
+              <label>
+                Cleaners (comma separated)
+                <input
+                  value={manualCleaners}
+                  onChange={(event) => setManualCleaners(event.target.value)}
+                  placeholder="Oscar"
+                />
+              </label>
+            </div>
+            <div className="display-manual-actions">
+              <button className="primary" type="button" onClick={saveManualDay}>Save {dayLabel(selectedEntry?.day ?? "day")}</button>
+              <small>Stored locally for {displayWeekKey}</small>
+            </div>
+            {manualEditorError && <p className="error">{manualEditorError}</p>}
+          </section>
+        )}
 
         <div className="display-landscape-board">
           {selectedEntry && (
@@ -1243,7 +1609,7 @@ function DisplayScreen({
         </div>
 
         <footer className="display-footer">
-          <span>{session.id === "mock-week" ? theme.statusLabels.mock : theme.statusLabels.live}</span>
+          <span>{session.id === "mock-week" ? theme.statusLabels.mock : manualSession ? "Manual plan" : theme.statusLabels.live}</span>
           <span>{theme.footerHint}</span>
         </footer>
 

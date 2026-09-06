@@ -74,6 +74,14 @@ To check the hallway tablet without creating a real session, open the built-in m
 http://localhost:5173/display?mock=1
 ```
 
+If no game was played for a week, open the regular display page and create a manual week plan directly in the display UI:
+
+```text
+http://localhost:5173/display
+```
+
+Use **Create manual week** and then fill in each day with the dish, cooks, and cleaners. Manual plans are saved locally in the browser per week.
+
 On a Raspberry Pi server, use:
 
 ```text

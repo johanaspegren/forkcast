@@ -2278,6 +2278,41 @@ h3 {
   color: var(--dt-muted);
 }
 
+.display-manual-editor {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--dt-rule);
+  border-radius: var(--dt-radius-sm);
+  background: var(--dt-surface-alt);
+}
+
+.display-manual-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.display-manual-grid label {
+  display: grid;
+  gap: 6px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--dt-muted);
+}
+
+.display-manual-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.display-manual-actions small {
+  color: var(--dt-muted);
+  font-weight: 700;
+}
+
 .display-menu-header {
   display: flex;
   align-items: flex-start;
@@ -3447,6 +3482,15 @@ h3 {
 
   .display-load {
     grid-template-columns: 1fr;
+  }
+
+  .display-manual-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .display-manual-actions {
+    flex-direction: column;
+    align-items: stretch;
   }
 }
 
