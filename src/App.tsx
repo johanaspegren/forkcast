@@ -656,6 +656,7 @@ const MOCK_WEEKLY_SESSION: Session = {
 export default function App() {
   const searchParams = new URLSearchParams(window.location.search);
   const isDisplayMode = window.location.pathname.startsWith("/display");
+  const isManualDisplayEditor = window.location.pathname.startsWith("/display/manual");
   const isMockDisplay = isDisplayMode && (searchParams.get("mock") === "1" || searchParams.get("session") === "mock");
   const sessionId = searchParams.get("session");
   const requestedWeek = parseWeekParam(searchParams.get("week"), getDisplayWeek().year);
@@ -771,6 +772,7 @@ export default function App() {
           meals={mealById}
           joinCode={joinCode}
           error={error}
+          editable={isManualDisplayEditor}
           onJoinCodeChange={setJoinCode}
           onLoad={() => run(() => api.getSession(joinCode))}
           onLoadMock={() => setSession(MOCK_WEEKLY_SESSION)}
@@ -1162,6 +1164,7 @@ function DisplayScreen({
   meals,
   joinCode,
   error,
+  editable,
   onJoinCodeChange,
   onLoad,
   onLoadMock,
@@ -1174,6 +1177,7 @@ function DisplayScreen({
   meals: Record<string, Meal>;
   joinCode: string;
   error: string;
+  editable: boolean;
   onJoinCodeChange: (value: string) => void;
   onLoad: () => void;
   onLoadMock: () => void;
@@ -1295,7 +1299,10 @@ function DisplayScreen({
             <input value={joinCode} onChange={(event) => onJoinCodeChange(event.target.value)} placeholder="Session ID" />
             <button className="primary" onClick={onLoad}>Load Menu</button>
           </div>
-          <button onClick={createManualWeekForOffset}>Create manual week</button>
+          {editable && <button onClick={createManualWeekForOffset}>Create manual week</button>}
+          {!editable && (
+            <p className="display-note">Need to edit manually? Open /display/manual on an admin device.</p>
+          )}
           <button className="display-mock-button" onClick={onLoadMock}>Try mock week</button>
           {error && <p className="error">{error}</p>}
         </section>
@@ -1450,7 +1457,7 @@ function DisplayScreen({
           <span>{phaseLabel}</span>
         </div>
 
-        {manualSession && (
+        {editable && manualSession && (
           <section className="display-manual-editor" aria-label={`Manual menu editor for ${displayWeekLabel}`}>
             <p className="display-kicker">Manual Week Plan</p>
             <div className="display-manual-grid">
