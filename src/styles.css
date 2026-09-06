@@ -2222,25 +2222,38 @@ h3 {
 
 .display-shell.display-readonly {
   place-items: start center;
+  padding: clamp(10px, 2vw, 30px);
 }
 
 .display-shell.display-readonly .display-menu {
-  gap: clamp(15px, 1.9vw, 25px);
-  padding-top: clamp(21px, 2.8vw, 42px);
-  padding-bottom: clamp(21px, 2.8vw, 42px);
+  gap: clamp(12px, 1.6vw, 22px);
+  padding-top: clamp(17px, 2.2vw, 34px);
+  padding-bottom: clamp(17px, 2.2vw, 34px);
+}
+
+.display-shell.display-readonly .display-menu h1 {
+  font-size: clamp(1.9rem, 3.8vw, 3.4rem);
 }
 
 .display-shell.display-readonly .display-subhead {
-  padding: 8px 0;
+  padding: 6px 0;
 }
 
 .display-shell.display-readonly .display-today-feature {
-  gap: 12px;
-  padding: clamp(17px, 2.1vw, 26px);
+  gap: 10px;
+  padding: clamp(14px, 1.8vw, 22px);
 }
 
 .display-shell.display-readonly .display-footer {
-  padding-top: 8px;
+  padding-top: 6px;
+}
+
+.display-shell.display-readonly .display-week-nav {
+  padding: 8px;
+}
+
+.display-shell.display-readonly .display-landscape-board {
+  gap: clamp(14px, 1.8vw, 24px);
 }
 
 .display-menu {
