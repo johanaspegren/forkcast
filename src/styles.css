@@ -2220,6 +2220,29 @@ h3 {
   transition: background 0.6s ease, color 0.6s ease;
 }
 
+.display-shell.display-readonly {
+  place-items: start center;
+}
+
+.display-shell.display-readonly .display-menu {
+  gap: clamp(15px, 1.9vw, 25px);
+  padding-top: clamp(21px, 2.8vw, 42px);
+  padding-bottom: clamp(21px, 2.8vw, 42px);
+}
+
+.display-shell.display-readonly .display-subhead {
+  padding: 8px 0;
+}
+
+.display-shell.display-readonly .display-today-feature {
+  gap: 12px;
+  padding: clamp(17px, 2.1vw, 26px);
+}
+
+.display-shell.display-readonly .display-footer {
+  padding-top: 8px;
+}
+
 .display-menu {
   position: relative;
   isolation: isolate;

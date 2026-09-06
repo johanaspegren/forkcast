@@ -1417,7 +1417,7 @@ function DisplayScreen({
   }
 
   return (
-    <main className={`display-shell ${theme.className}`}>
+    <main className={`display-shell ${theme.className} ${editable ? "display-editor" : "display-readonly"}`}>
       <section className="display-menu">
         <header className="display-menu-header">
           <div>
