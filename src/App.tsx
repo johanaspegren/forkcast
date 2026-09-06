@@ -7,7 +7,7 @@ import { api } from "./api/rest";
 import { connectSessionSocket } from "./api/websocket";
 import { PlayerAvatar } from "./components/PlayerAvatar";
 import { VotingPoints } from "./components/VotingPoints";
-import type { GameMode, Meal, Proposal, SavedWeek, Session } from "./game/gameTypes";
+import type { GameMode, ManualWeek, Meal, Proposal, SavedWeek, Session } from "./game/gameTypes";
 import { heartTotal, publishHeart, rollbackHeart, useDayLeader, useProposalHearts } from "./realtime/hearts";
 import { uiAssets } from "./uiAssets";
 
@@ -15,7 +15,6 @@ const titleCase = (value: string) => value.slice(0, 1).toUpperCase() + value.sli
 const heartBurstOffsets = [-28, -18, -8, 4, 14, 24, 34, 44];
 const SAVED_WEEKS_KEY = "forkcast.savedWeeks";
 const PLAYER_PROFILE_KEY = "forkcast.playerProfile";
-const MANUAL_DISPLAY_WEEKS_KEY = "forkcast.manualDisplayWeeks";
 const DEBUG_BUILD_MARKER = "ANDROID-LANDSCAPE-OPENING-2026-08-17-A";
 const avatarChoices = ["🦄", "🐱", "🦊", "🐼", "🐸", "🐵", "🐯", "🐰", "🥘", "🍕", "🌮", "🍜"];
 const manualDisplayDays = ["monday", "tuesday", "wednesday", "thursday", "friday"];
@@ -97,22 +96,6 @@ function splitCrewNames(input: string) {
 function findMealByName(meals: Record<string, Meal>, mealName: string) {
   const normalized = mealName.trim().toLowerCase();
   return Object.values(meals).find((meal) => meal.name.trim().toLowerCase() === normalized);
-}
-
-function localStorageRead<T>(key: string, fallback: T) {
-  try {
-    return JSON.parse(localStorage.getItem(key) ?? "") as T;
-  } catch {
-    return fallback;
-  }
-}
-
-function readManualDisplayWeeks() {
-  return localStorageRead<Record<string, ManualDisplayWeek>>(MANUAL_DISPLAY_WEEKS_KEY, {});
-}
-
-function writeManualDisplayWeeks(weeks: Record<string, ManualDisplayWeek>) {
-  localStorage.setItem(MANUAL_DISPLAY_WEEKS_KEY, JSON.stringify(weeks));
 }
 
 function createEmptyManualDisplayWeek(year: number, week: number, days = manualDisplayDays): ManualDisplayWeek {
@@ -691,11 +674,14 @@ export default function App() {
       const selectedWeek = requestedWeek ?? getDisplayWeek();
       api.getSavedWeek(weekId(selectedWeek.year, selectedWeek.week))
         .then((savedWeek) => setSession(savedWeekToSession(savedWeek)))
-        .catch(() => {
-          const manualWeek = readManualDisplayWeeks()[weekId(selectedWeek.year, selectedWeek.week)];
-          if (!manualWeek) return;
-          mergeMeals(manualDisplayWeekToMeals(manualWeek));
-          setSession(manualDisplayWeekToSession(manualWeek));
+        .catch(async () => {
+          try {
+            const manualWeek = await api.getManualWeek(weekId(selectedWeek.year, selectedWeek.week));
+            mergeMeals(manualDisplayWeekToMeals(manualWeek));
+            setSession(manualDisplayWeekToSession(manualWeek));
+          } catch {
+            setSession(null);
+          }
         });
     }
   }, [isDisplayMode, isMockDisplay, requestedWeek?.week, requestedWeek?.year, sessionId]);
@@ -778,11 +764,15 @@ export default function App() {
           onLoadMock={() => setSession(MOCK_WEEKLY_SESSION)}
           onSavedWeekLoad={setSession}
           onManualWeekLoad={applyManualWeek}
-          onManualWeekSave={(manualWeek) => {
-            const manualWeeks = readManualDisplayWeeks();
-            manualWeeks[manualWeek.id] = manualWeek;
-            writeManualDisplayWeeks(manualWeeks);
-            applyManualWeek(manualWeek);
+          onManualWeekSave={async (manualWeek) => {
+            const savedManualWeek = await api.saveManualWeek({
+              year: manualWeek.year,
+              week: manualWeek.week,
+              days: manualWeek.days,
+              plan: manualWeek.plan
+            });
+            mergeMeals(manualDisplayWeekToMeals(savedManualWeek));
+            setSession(manualDisplayWeekToSession(savedManualWeek));
           }}
           requestedWeek={requestedWeek}
         />
@@ -1183,7 +1173,7 @@ function DisplayScreen({
   onLoadMock: () => void;
   onSavedWeekLoad: (session: Session | null) => void;
   onManualWeekLoad: (manualWeek: ManualDisplayWeek) => void;
-  onManualWeekSave: (manualWeek: ManualDisplayWeek) => void;
+  onManualWeekSave: (manualWeek: ManualDisplayWeek) => Promise<void>;
   requestedWeek: { year: number; week: number } | null;
 }) {
   const displayParams = new URLSearchParams(window.location.search);
@@ -1251,23 +1241,28 @@ function DisplayScreen({
       const selectedWeek = getDisplayWeek(nextOffset);
       const savedWeek = await api.getSavedWeek(weekId(selectedWeek.year, selectedWeek.week));
       onSavedWeekLoad(savedWeekToSession(savedWeek));
-    } catch (err) {
+    } catch {
       const selectedWeek = getDisplayWeek(nextOffset);
-      const manualWeek = readManualDisplayWeeks()[weekId(selectedWeek.year, selectedWeek.week)];
-      if (manualWeek) {
+      try {
+        const manualWeek = await api.getManualWeek(weekId(selectedWeek.year, selectedWeek.week));
         onManualWeekLoad(manualWeek);
         setSavedWeekError("");
         return;
+      } catch {
+        onSavedWeekLoad(null);
+        setSavedWeekError(`No saved Forkcast for Week ${selectedWeek.week}.`);
       }
-      onSavedWeekLoad(null);
-      setSavedWeekError(`No saved Forkcast for Week ${selectedWeek.week}.`);
     }
   }
 
-  function createManualWeekForOffset() {
+  async function createManualWeekForOffset() {
     const nextManualWeek = createEmptyManualDisplayWeek(displayWeek.year, displayWeek.week);
-    onManualWeekSave(nextManualWeek);
-    setSavedWeekError("");
+    try {
+      await onManualWeekSave(nextManualWeek);
+      setSavedWeekError("");
+    } catch (err) {
+      setSavedWeekError(err instanceof Error ? err.message : "Could not save manual week.");
+    }
   }
 
   if (!session) {
@@ -1345,7 +1340,7 @@ function DisplayScreen({
   const selectedCleanerIds = selectedEntry?.locked?.cleanup ?? selectedEntry?.proposal?.cleanup_volunteers ?? [];
   const isSelectedToday = selectedEntry?.day === todayEntry?.day;
 
-  function saveManualDay() {
+  async function saveManualDay() {
     const editableSession = session;
     if (!manualSession || !editableSession || !selectedEntry) return;
     const mealName = manualMealName.trim();
@@ -1413,8 +1408,12 @@ function DisplayScreen({
     };
     const nextManualWeek = sessionToManualDisplayWeek(nextSession, mergedMeals, displayWeek.year, displayWeek.week);
 
-    onManualWeekSave(nextManualWeek);
-    setManualEditorError("");
+    try {
+      await onManualWeekSave(nextManualWeek);
+      setManualEditorError("");
+    } catch (err) {
+      setManualEditorError(err instanceof Error ? err.message : "Could not save manual day.");
+    }
   }
 
   return (
@@ -1495,8 +1494,8 @@ function DisplayScreen({
               </label>
             </div>
             <div className="display-manual-actions">
-              <button className="primary" type="button" onClick={saveManualDay}>Save {dayLabel(selectedEntry?.day ?? "day")}</button>
-              <small>Stored locally for {displayWeekKey}</small>
+              <button className="primary" type="button" onClick={() => void saveManualDay()}>Save {dayLabel(selectedEntry?.day ?? "day")}</button>
+              <small>Saved on server for {displayWeekKey}</small>
             </div>
             {manualEditorError && <p className="error">{manualEditorError}</p>}
           </section>

@@ -5,6 +5,7 @@ from fastapi import APIRouter, Query
 from backend.forkcast.api.school_menu import fetch_matilda_school_menu
 from backend.forkcast.api.websocket import manager
 from backend.forkcast.game.engine import engine
+from backend.forkcast.game.manual_weeks import ManualWeek, SaveManualWeekRequest, get_manual_week, save_manual_week
 from backend.forkcast.game.models import (
     CardPlayRequest,
     CreateSessionRequest,
@@ -58,6 +59,16 @@ def saved_week(saved_week_id: str) -> SavedWeek:
 def save_completed_week(request: SaveWeekRequest) -> SavedWeek:
     session = engine.get_session(request.session_id)
     return save_week(session, request)
+
+
+@router.get("/manual-weeks/{manual_week_id}")
+def manual_week(manual_week_id: str) -> ManualWeek:
+    return get_manual_week(manual_week_id)
+
+
+@router.post("/manual-weeks")
+def save_week_manual(request: SaveManualWeekRequest) -> ManualWeek:
+    return save_manual_week(request)
 
 
 @router.post("/sessions")

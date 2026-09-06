@@ -80,9 +80,11 @@ If no game was played for a week, use the dedicated manual editor page:
 http://localhost:5173/display/manual
 ```
 
-Use **Create manual week** and then fill in each day with the dish, cooks, and cleaners. Manual plans are saved locally in the browser per week.
+Use **Create manual week** and then fill in each day with the dish, cooks, and cleaners. Manual plans are saved on the backend per week.
 
 The tablet view at `/display` stays read-only and does not show edit controls.
+
+When you run Forkcast on Raspberry Pi, manual plans are stored on the Pi and shown on every device that opens the same server URL.
 
 On a Raspberry Pi server, use:
 

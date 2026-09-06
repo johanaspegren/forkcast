@@ -160,3 +160,19 @@ export type SavedWeek = {
   plan: Record<string, SavedWeekEntry | null>;
   rule_overrides: string[];
 };
+
+export type ManualWeekDayPlan = {
+  meal_name: string;
+  meal_emoji: string;
+  chef: string[];
+  cleanup: string[];
+};
+
+export type ManualWeek = {
+  id: string;
+  updated_at: string;
+  year: number;
+  week: number;
+  days: string[];
+  plan: Record<string, ManualWeekDayPlan | null>;
+};
