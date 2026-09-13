@@ -1174,11 +1174,15 @@ function DisplaySwipeQr({ value, themeClassName }: { value: string; themeClassNa
 
   useEffect(() => {
     if (!canvasRef.current) return;
-    const qrColors =
-      themeClassName === "theme-artdeco"
-        ? { dark: "#d4ab4a", light: "#171410" }
-        : { dark: "#24302f", light: "#fff9ed" };
-
+    
+    let qrColors = { dark: "#24302f", light: "#fff9ed" }
+    if (themeClassName === "theme-artdeco") {
+      qrColors = { dark: "#d4ab4a", light: "#171410" };
+    }
+    if (themeClassName === "theme-neko") {
+      qrColors = { dark: "#e34b4b", light: "#fff9ed" };
+    }
+    
     QRCode.toCanvas(canvasRef.current, value, {
       width: 108,
       margin: 1,
@@ -1190,9 +1194,8 @@ function DisplaySwipeQr({ value, themeClassName }: { value: string; themeClassNa
     <a className="display-swipe-qr" href={value}>
       <div className="display-swipe-qr-copy">
         {isNekoTheme ? (
-          <div className="display-swipe-qr-neko-compact">
-            <span aria-hidden="true" className="display-swipe-qr-neko-icon">🐱</span>
-            <span aria-hidden="true" className="display-swipe-qr-neko-symbol">投</span>
+          <div className="display-swipe-qr-neko-compact"> 
+            <img aria-hidden="true" className="display-swipe-qr-neko-symbol" src="/assets/forkcast/cats/kawai_vote.png" alt="投" />
             <div className="display-swipe-qr-neko-text">
               <strong>{themedCopy.title}</strong>
               <span>{themedCopy.hint}</span>

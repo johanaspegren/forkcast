@@ -3216,15 +3216,10 @@ h3 {
 }
 
 .theme-neko .display-swipe-qr {
-  align-items: center;
-  gap: 10px;
-  padding: 8px 10px;
-  border-style: solid;
-  border-width: 2px;
-  border-color: color-mix(in srgb, var(--dt-accent) 72%, #ffffff);
-  background:
-    linear-gradient(135deg, rgba(255, 215, 238, 0.96), rgba(206, 235, 255, 0.95));
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.72);
+  gap: 1px;
+  align-items: flex-end;
+  text-align: left;
+  max-width: fit-content;
 }
 
 .theme-neko .display-swipe-qr-copy strong {
