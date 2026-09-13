@@ -6,8 +6,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./api/rest";
 import { connectSessionSocket } from "./api/websocket";
 import { PlayerAvatar } from "./components/PlayerAvatar";
+import { SwipeProgress } from "./swipe/SwipeProgress";
 import { VotingPoints } from "./components/VotingPoints";
 import type { GameMode, ManualWeek, Meal, Proposal, SavedWeek, Session } from "./game/gameTypes";
+import { getDefaultWeekOffset, getDisplayWeek, weekId } from "./game/week";
 import { heartTotal, publishHeart, rollbackHeart, useDayLeader, useProposalHearts } from "./realtime/hearts";
 import { uiAssets } from "./uiAssets";
 
@@ -42,38 +44,9 @@ type ManualDisplayWeek = {
   updated_at: string;
 };
 
-function getIsoWeek(date = new Date()) {
-  const normalized = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
-  const day = normalized.getUTCDay() || 7;
-  normalized.setUTCDate(normalized.getUTCDate() + 4 - day);
-  const yearStart = new Date(Date.UTC(normalized.getUTCFullYear(), 0, 1));
-  const week = Math.ceil(((normalized.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
-  return { year: normalized.getUTCFullYear(), week };
-}
-
-function getDefaultWeekOffset(date = new Date()) {
-  return date.getDay() === 0 ? 1 : 0;
-}
-
-function getDisplayWeek(weekOffset = getDefaultWeekOffset(), date = new Date()) {
-  const target = new Date(date);
-  target.setDate(target.getDate() + weekOffset * 7);
-  const { year, week } = getIsoWeek(target);
-  const day = target.getDay() || 7;
-  const start = new Date(target);
-  start.setDate(target.getDate() - day + 1);
-  const end = new Date(start);
-  end.setDate(start.getDate() + 6);
-  return { year, week, start, end };
-}
-
 function formatShortDateRange(start: Date, end: Date) {
   const formatter = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" });
   return `${formatter.format(start)} - ${formatter.format(end)}`;
-}
-
-function weekId(year: number, week: number) {
-  return `${year}-W${String(week).padStart(2, "0")}`;
 }
 
 function parseWeekParam(value: string | null, fallbackYear: number) {
@@ -597,28 +570,27 @@ const MOCK_WEEKLY_SESSION: Session = {
   game_mode: "CLASSIC_DRAFT",
   days: ["monday", "tuesday", "wednesday", "thursday", "friday"],
   players: {
-    johan: { id: "johan", name: "Johan", avatar: "🥘", favourite_meals: ["salmon", "tacos", "pasta"], simulated: false },
-    anna: { id: "anna", name: "Anna", avatar: "🍕", favourite_meals: ["pizza", "pasta", "chicken_curry"], simulated: false },
-    elsa: { id: "elsa", name: "Elsa", avatar: "🌮", favourite_meals: ["tacos", "salmon", "pizza"], simulated: false },
-    oscar: { id: "oscar", name: "Oscar", avatar: "🍜", favourite_meals: ["chicken_curry", "pasta", "salmon"], simulated: false }
+    mamma: { id: "mamma", name: "Mamma", avatar: "🍲", favourite_meals: ["salmon", "pizza", "pasta"], simulated: false },
+    pappa: { id: "pappa", name: "Pappa", avatar: "🍳", favourite_meals: ["tacos", "chicken_curry", "pasta"], simulated: false },
+    amanda: { id: "amanda", name: "Amanda", avatar: "🧃", favourite_meals: ["pizza", "salmon", "tacos"], simulated: false }
   },
   player_state: {},
   proposals: {},
   week: {
-    monday: { meal_id: "salmon", chef: ["johan"], cleanup: ["anna"], rule_exceptions: [] },
-    tuesday: { meal_id: "tacos", chef: ["elsa"], cleanup: ["oscar"], rule_exceptions: [] },
-    wednesday: { meal_id: "pasta", chef: ["anna"], cleanup: ["johan"], rule_exceptions: [] },
-    thursday: { meal_id: "chicken_curry", chef: ["oscar"], cleanup: ["elsa"], rule_exceptions: [] },
-    friday: { meal_id: "pizza", chef: ["johan", "anna"], cleanup: ["elsa", "oscar"], rule_exceptions: [] }
+    monday: { meal_id: "salmon", chef: ["mamma"], cleanup: ["pappa"], rule_exceptions: [] },
+    tuesday: { meal_id: "tacos", chef: ["amanda"], cleanup: ["mamma"], rule_exceptions: [] },
+    wednesday: { meal_id: "pasta", chef: ["pappa"], cleanup: ["amanda"], rule_exceptions: [] },
+    thursday: { meal_id: "chicken_curry", chef: ["mamma"], cleanup: ["pappa"], rule_exceptions: [] },
+    friday: { meal_id: "pizza", chef: ["amanda"], cleanup: ["mamma", "pappa"], rule_exceptions: [] }
   },
   rules: [
     { id: "fish", label: "One fish dinner", level: "house", satisfied: true, detail: "Lemon Salmon covers fish this week." },
     { id: "minced", label: "Only one minced-meat dinner", level: "house", satisfied: true, detail: "Taco Night is the only minced-meat dinner." }
   ],
-  turn_order: ["johan", "anna", "elsa", "oscar"],
+  turn_order: ["mamma", "pappa", "amanda"],
   current_turn_index: 0,
   turn_log: ["Mock week loaded for hallway display testing."],
-  max_players: 4,
+  max_players: 3,
   starting_voting_points: 10,
   max_selected_meals: 3,
   max_action_cards_played: 2,
@@ -961,6 +933,10 @@ export default function App() {
             <CookingPot size={18} /> Receptsamling
             <small>Lägg till recept från foto eller länk</small>
           </a>
+          <a className="recipe-entry-link swipe-entry-link" href="/swipe">
+            <Sparkles size={18} /> Veckans svep
+            <small>Swipa rätter, få ett förslag som passar alla</small>
+          </a>
         </section>
 
         {error && <p className="error">{error}</p>}
@@ -1300,6 +1276,7 @@ function DisplayScreen({
               Next Week <ChevronRight size={18} />
             </button>
           </div>
+          <SwipeProgress year={displayWeek.year} week={displayWeek.week} weekId={displayWeekKey} />
           <div className="display-load">
             <input value={joinCode} onChange={(event) => onJoinCodeChange(event.target.value)} placeholder="Session ID" />
             <button className="primary" onClick={onLoad}>Load Menu</button>
@@ -1491,7 +1468,7 @@ function DisplayScreen({
                 <input
                   value={manualCookers}
                   onChange={(event) => setManualCookers(event.target.value)}
-                  placeholder="Anna, Johan"
+                  placeholder="Mamma, Pappa"
                 />
               </label>
               <label>
@@ -1499,7 +1476,7 @@ function DisplayScreen({
                 <input
                   value={manualCleaners}
                   onChange={(event) => setManualCleaners(event.target.value)}
-                  placeholder="Oscar"
+                  placeholder="Amanda"
                 />
               </label>
             </div>

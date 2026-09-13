@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -17,6 +18,10 @@ class ManualWeekDayPlan(BaseModel):
     meal_emoji: str = "🍽️"
     chef: list[str] = Field(default_factory=list)
     cleanup: list[str] = Field(default_factory=list)
+    # Set when the week came from the swipe round, so the dish can be traced
+    # back to its recipe. Optional, so hand-edited manual weeks still validate.
+    meal_id: str | None = None
+    note: str | None = None
 
 
 class SaveManualWeekRequest(BaseModel):
@@ -43,9 +48,13 @@ def _read_manual_weeks() -> dict[str, Any]:
 
 
 def _write_manual_weeks(manual_weeks: dict[str, Any]) -> None:
+    """Write through a temp file: this is one shared blob for every week, and
+    the swipe round can be confirmed while a tablet is reading it."""
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    with MANUAL_WEEKS_FILE.open("w", encoding="utf-8") as handle:
+    temp_path = MANUAL_WEEKS_FILE.with_suffix(".json.tmp")
+    with temp_path.open("w", encoding="utf-8") as handle:
         json.dump(manual_weeks, handle, ensure_ascii=False, indent=2, sort_keys=True)
+    os.replace(temp_path, MANUAL_WEEKS_FILE)
 
 
 def save_manual_week(request: SaveManualWeekRequest) -> ManualWeek:

@@ -6,6 +6,7 @@ import time
 import uuid
 from fastapi import HTTPException
 
+from . import rules
 from .models import (
     CardPlayRequest,
     CreateSessionRequest,
@@ -29,7 +30,6 @@ from .models import (
     RealtimeOverrideWindow,
     RealtimeStats,
     ReorderWeekRequest,
-    RuleStatus,
     Session,
     UnlockDayRequest,
     VoteRequest,
@@ -40,9 +40,9 @@ DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday"]
 AVATARS = ["🥘", "🍕", "🌮", "🍜", "🥗", "🍛", "🐟", "🍳"]
 ACTION_DECK = ["ILL_COOK", "ILL_CLEAN"]
 SIMULATED_PLAYERS = [
-    ("Anna", "🍕"),
-    ("Elsa", "🌮"),
-    ("Oscar", "🍜"),
+    ("Mamma", "🍲"),
+    ("Pappa", "🍳"),
+    ("Amanda", "🧃"),
     ("Mira", "🥗"),
     ("Noah", "🍛"),
 ]
@@ -612,30 +612,13 @@ class GameEngine:
         )
 
     def _refresh_rules(self, session: Session) -> Session:
-        locked_meals = [entry.meal_id for entry in session.week.values() if entry]
-        fish_count = sum(1 for meal_id in locked_meals if MEALS[meal_id].fish)
-        minced_count = sum(1 for meal_id in locked_meals if MEALS[meal_id].minced_meat)
-        rules = [
-            RuleStatus(
-                id="one_fish",
-                label="At least 1 fish meal per week",
-                level="HOUSE",
-                satisfied=fish_count >= 1 or not all(session.week.values()),
-                detail=f"{fish_count} fish meals locked",
-            ),
-            RuleStatus(
-                id="max_one_minced",
-                label="Maximum 1 minced-meat meal per week",
-                level="HOUSE",
-                satisfied=minced_count <= 1,
-                detail=f"{minced_count} minced-meat meals locked",
-            ),
-        ]
-        for rule in rules:
-            if not rule.satisfied and rule.id in session.rule_overrides:
-                rule.satisfied = True
-                rule.detail = f"{rule.detail} — overruled by General Assembly"
-        session.rules = rules
+        locked_meals = [MEALS[entry.meal_id] for entry in session.week.values() if entry]
+        session.rules = rules.evaluate(
+            locked_meals,
+            overrides=session.rule_overrides,
+            # A half-drafted week has not broken `one_fish` yet, it just has not met it.
+            week_complete=all(session.week.values()),
+        )
         return session
 
     def _simulate_votes(self, session: Session, simulated_ids: list[str]) -> None:

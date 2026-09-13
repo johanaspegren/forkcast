@@ -14,6 +14,7 @@ This first prototype includes:
 - Turn-based negotiation with direct cook/clean commitments
 - Live hallway menu display with rotating restaurant-inspired styles
 - Shared family recipe collection, added from a photo or a link, feeding the meal pool
+- Asynchronous swipe voting that proposes a week everyone can live with
 
 ## Run Locally
 
@@ -171,7 +172,7 @@ Use `sudo systemctl daemon-reload` only after changing `deploy/forkcast.service`
 
 ## Simulation Mode
 
-Use **Create Simulation** on the first screen to create a session as yourself plus three simulated players: Anna, Elsa, and Oscar.
+Use **Create Simulation** on the first screen to create a session as yourself plus three simulated players: Mamma, Pappa, and Amanda.
 
 During the game, use **Simulate Next** to let simulated players complete the current phase:
 
@@ -236,6 +237,68 @@ export FORKCAST_RECIPE_MODEL=claude-sonnet-5
 Transcriptions from photos are marked **Granska** (review) until someone in the family opens
 the recipe and confirms it — a recipe card photographed at an angle is not always read
 perfectly, and the ingredient amounts are editable.
+
+## Veckans svep (swipe voting)
+
+A third way to decide the week, at:
+
+```text
+http://localhost:5173/swipe
+```
+
+Unlike Classic Draft and Realtime Rush, this one is **asynchronous** — there is no
+session and no lobby. Each family member opens the app whenever they like, picks
+themselves from the roster, and swipes through a short deck of meal cards:
+
+- **swipe left** — not this week
+- **swipe right** — happy to eat this
+- **swipe up** — a favourite, *and* an offer to cook it
+
+The three buttons under the card do the same thing, and are the primary path; the
+gesture is an enhancement. Preferences are durable, so the next round only asks
+about meals you have not seen yet.
+
+When someone taps **Skapa veckans förslag**, Forkcast picks the week. It is worth
+being precise about who decides what:
+
+- The **solver** chooses the menu, deterministically. It scores every possible
+  week against each member's own swiping history and picks the one that leaves
+  the *worst-off* member best off, subject to the house rules. This runs with no
+  API key and no internet.
+- The **AI** only ever chooses between weeks the solver has already declared
+  equally good, and writes the one-line reason under each dish. It returns an
+  index into a list of pre-validated weeks, so it cannot introduce a meal or
+  break a house rule. With no key configured it is skipped silently and the
+  deterministic reasons are used instead.
+
+The family then accepts, swaps a single day, or rerolls the whole week. Nothing
+is locked until someone taps **Lås veckan**, which publishes the week so it
+appears on the hallway tablet.
+
+Swiping on a Sunday plans the week that is about to start, matching the display.
+
+### Why a dislike is free
+
+The spec prices blocking expensively and rejects a free veto, but swiping left
+has to feel free or nobody finishes the deck. Both hold here because a dislike is
+a *weight*, never a block: each member is scored against what a random week would
+give **them**, so someone who dislikes most of the deck expects a lot of pain
+from any week and avoiding their dislikes earns very little. The only way to
+score for them is to include something they actually liked. A member who dislikes
+everything cannot capture the week.
+
+### Who has swiped
+
+The hallway tablet shows the round's progress and a QR code whenever a week is
+still undecided — async planning has no lobby to remind anyone, so the tablet is
+the nudge.
+
+### Optional AI
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
+export FORKCAST_AI_MODEL=claude-opus-5   # optional override
+```
 
 ## School Menu Context
 

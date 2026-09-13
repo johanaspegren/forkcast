@@ -4263,3 +4263,453 @@ h3 {
   padding: 6px 0;
   line-height: 1.45;
 }
+
+/* ---------- Swipe: hallway progress nudge ---------- */
+
+.swipe-progress {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin: 14px 0;
+  padding: 16px 18px;
+  border-radius: 18px;
+  background: rgba(255, 249, 237, 0.72);
+  border: 1px solid rgba(36, 48, 47, 0.12);
+}
+
+.swipe-progress-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.swipe-progress-body h2 {
+  margin: 2px 0 10px;
+  font-size: 1.35rem;
+}
+
+.swipe-progress-members {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.swipe-progress-members li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.75);
+  font-size: 0.95rem;
+}
+
+.swipe-progress-members li.waiting {
+  opacity: 0.55;
+}
+
+.swipe-progress-members li.done em {
+  color: #1c8a4a;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.swipe-progress-members li em {
+  font-style: normal;
+  opacity: 0.6;
+}
+
+.swipe-progress canvas {
+  border-radius: 12px;
+  flex: none;
+}
+
+/* ---------- Swipe deck ---------- */
+
+.swipe-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100dvh - 118px);
+}
+
+.swipe-below-header {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  transform: translateY(10%);
+}
+
+.swipe-topline {
+  width: 100%;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.swipe-counter {
+  text-align: right;
+  font-weight: 800;
+  color: rgba(255, 255, 255, 0.9);
+  margin: 0;
+  font-size: 0.98rem;
+}
+
+.swipe-stage {
+  position: relative;
+  flex: 1;
+  min-height: 320px;
+  display: grid;
+  place-items: center;
+}
+
+.swipe-card {
+  position: absolute;
+  width: min(88vw, 360px);
+  background: #fff;
+  border-radius: 26px;
+  overflow: hidden;
+  box-shadow: 0 18px 0 rgba(40, 23, 129, 0.16), 0 26px 50px rgba(24, 32, 112, 0.3);
+  /* The browser must not steal the drag for scrolling (see progress.md). */
+  touch-action: none;
+  user-select: none;
+  cursor: grab;
+}
+
+.swipe-card.stacked {
+  transform: scale(0.94) translateY(14px);
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.swipe-card-art {
+  position: relative;
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(160deg, var(--game-card-2), var(--game-card));
+}
+
+.swipe-card-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.swipe-card-emoji {
+  font-size: 5.5rem;
+}
+
+/* Emoji cards are a designed state, not a missing photo. */
+.swipe-card-art.protein-fisk,
+.swipe-card-art.protein-fish {
+  background: linear-gradient(160deg, #d9f3ff, #a9dcf5);
+}
+.swipe-card-art.protein-kyckling,
+.swipe-card-art.protein-kalkon,
+.swipe-card-art.protein-chicken {
+  background: linear-gradient(160deg, #fff1cf, #ffd79a);
+}
+.swipe-card-art.protein-nöt,
+.swipe-card-art.protein-beef,
+.swipe-card-art.protein-fläsk {
+  background: linear-gradient(160deg, #ffdfd8, #ffb9a8);
+}
+.swipe-card-art.protein-vegetarisk,
+.swipe-card-art.protein-vegetarian {
+  background: linear-gradient(160deg, #dcf7dd, #a9e7b4);
+}
+
+.swipe-stamp {
+  position: absolute;
+  top: 18px;
+  padding: 8px 18px;
+  border-radius: 12px;
+  font-weight: 900;
+  font-size: 1.3rem;
+  letter-spacing: 0.06em;
+  color: #fff;
+  transform: rotate(-8deg);
+}
+
+.swipe-stamp.like { right: 18px; background: var(--game-green); }
+.swipe-stamp.dislike { left: 18px; background: var(--game-red); }
+.swipe-stamp.superlike { left: 50%; transform: translateX(-50%) rotate(-4deg); background: var(--game-purple); }
+
+.swipe-card-body {
+  padding: 14px 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.swipe-card-body strong { font-size: 1.15rem; line-height: 1.2; }
+.swipe-card-body small { opacity: 0.65; }
+.swipe-card-revisit { font-style: normal; font-size: 0.8rem; opacity: 0.55; }
+
+.swipe-actions {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 18px;
+  padding: 8px 0 4px;
+}
+
+.swipe-actions button {
+  width: 66px;
+  height: 66px;
+  border-radius: 50%;
+  border: none;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  box-shadow: 0 6px 0 rgba(40, 23, 129, 0.2);
+}
+
+.swipe-no { background: var(--game-red); }
+.swipe-yes { background: var(--game-green); }
+.swipe-super { background: var(--game-purple); width: 54px !important; height: 54px !important; }
+
+.swipe-hint {
+  text-align: center;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 0.8rem;
+  margin: 8px 0 6px;
+}
+
+.swipe-roster {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.swipe-roster-member {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: none;
+  border-radius: 999px;
+  padding: 10px 16px;
+  background: #fff;
+  font-weight: 700;
+  box-shadow: 0 4px 0 rgba(40, 23, 129, 0.14);
+}
+
+.swipe-roster-member span { font-size: 1.3rem; }
+
+.swipe-done h2 { margin: 0; }
+
+.swipe-note {
+  font-size: 0.9rem;
+  font-weight: 600;
+  background: rgba(255, 216, 61, 0.35);
+  border-radius: 12px;
+  padding: 8px 12px;
+  margin: 4px 0;
+}
+
+.swipe-note.warn { background: rgba(255, 158, 36, 0.35); }
+
+.swipe-link {
+  background: none;
+  border: none;
+  text-decoration: underline;
+  font-weight: 700;
+  opacity: 0.7;
+}
+
+.swipe-week {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.swipe-week-day {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 800;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.6;
+}
+
+.swipe-week-day button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: none;
+  background: rgba(36, 107, 255, 0.12);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.swipe-week-meal {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  background: rgba(255, 255, 255, 0.7);
+  border-radius: 14px;
+  padding: 10px 12px;
+}
+
+.swipe-week-meal > span { font-size: 1.6rem; }
+.swipe-week-meal strong { display: block; line-height: 1.2; }
+.swipe-week-meal small { display: block; opacity: 0.7; font-size: 0.82rem; }
+.swipe-week-meal em { font-style: normal; font-size: 0.78rem; opacity: 0.6; }
+
+.swipe-satisfaction {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 12px 0 4px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.swipe-satisfaction span {
+  background: rgba(255, 255, 255, 0.7);
+  border-radius: 999px;
+  padding: 4px 10px;
+}
+
+.swipe-satisfaction .meh { opacity: 0.6; }
+
+.swipe-proposal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.swipe-entry-link {
+  margin-top: 10px;
+  background: linear-gradient(180deg, #9d7bff, var(--game-purple));
+  color: #fff;
+}
+
+.swipe-chores {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.swipe-chores button {
+  border: none;
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  background: rgba(36, 107, 255, 0.1);
+  color: var(--game-ink);
+}
+
+.swipe-chores button.taken {
+  background: var(--game-green);
+  color: #fff;
+}
+
+/* ---------- Swipe: your own vote recap ---------- */
+
+.vote-summary h3 { margin: 0; }
+.vote-summary .muted { margin: 2px 0 6px; font-size: 0.9rem; }
+
+.vote-group h4 {
+  margin: 12px 0 4px;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.6;
+}
+
+.vote-group h4 span {
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 600;
+  opacity: 0.7;
+}
+
+.vote-group ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.vote-group li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(255, 255, 255, 0.7);
+  border-radius: 12px;
+  padding: 6px 8px;
+}
+
+.vote-thumb {
+  width: 40px;
+  height: 40px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  background: var(--game-card-2);
+  overflow: hidden;
+  flex: none;
+  font-size: 1.3rem;
+}
+
+.vote-thumb img { width: 100%; height: 100%; object-fit: cover; }
+
+.vote-name {
+  flex: 1;
+  min-width: 0;
+  font-weight: 700;
+  font-size: 0.9rem;
+  line-height: 1.2;
+  overflow-wrap: break-word;
+}
+
+.vote-name em {
+  font-style: normal;
+  font-size: 0.68rem;
+  font-weight: 800;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--game-yellow);
+  opacity: 0.9;
+}
+
+.vote-change {
+  display: flex;
+  gap: 4px;
+  flex: none;
+}
+
+.vote-change button {
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: rgba(23, 36, 92, 0.08);
+  color: var(--game-ink);
+}
+
+.vote-change button.active.no { background: var(--game-red); color: #fff; }
+.vote-change button.active.yes { background: var(--game-green); color: #fff; }
+.vote-change button.active.super { background: var(--game-purple); color: #fff; }
