@@ -12,6 +12,9 @@ import { heartTotal, publishHeart, rollbackHeart, useDayLeader, useProposalHeart
 import { uiAssets } from "./uiAssets";
 
 const titleCase = (value: string) => value.slice(0, 1).toUpperCase() + value.slice(1);
+
+// Meals backed by the family recipe collection (see backend recipes/meal_sync.py).
+const RECIPE_MEAL_PREFIX = "recipe-";
 const heartBurstOffsets = [-28, -18, -8, 4, 14, 24, 34, 44];
 const SAVED_WEEKS_KEY = "forkcast.savedWeeks";
 const PLAYER_PROFILE_KEY = "forkcast.playerProfile";
@@ -953,6 +956,13 @@ export default function App() {
           </button>
         </section>
 
+        <section className="panel">
+          <a className="recipe-entry-link" href="/recipes">
+            <CookingPot size={18} /> Receptsamling
+            <small>Lägg till recept från foto eller länk</small>
+          </a>
+        </section>
+
         {error && <p className="error">{error}</p>}
       </main>
     );
@@ -1649,7 +1659,7 @@ function MealPlanning({
 }) {
   const player = session.players[playerId];
   const state = session.player_state[playerId];
-  const [filter, setFilter] = useState<"favourites" | "asian" | "vego">("favourites");
+  const [filter, setFilter] = useState<"favourites" | "recept" | "asian" | "vego">("favourites");
   const [pickedMealId, setPickedMealId] = useState("");
   const [pickedFromDay, setPickedFromDay] = useState<string | null>(null);
   const [activePlanningDrag, setActivePlanningDrag] = useState<{ mealId: string; fromDay: string | null } | null>(null);
@@ -1675,8 +1685,14 @@ function MealPlanning({
   const filteredMeals = allMeals.filter((meal) => {
     if (assignedMealIds.has(meal.id)) return false;
     if (filter === "favourites") return player.favourite_meals.includes(meal.id);
+    if (filter === "recept") return meal.id.startsWith(RECIPE_MEAL_PREFIX);
     if (filter === "asian") return meal.tags.includes("japanese") || meal.tags.includes("spiced");
-    return meal.protein_type === "vegetarian" || meal.tags.includes("vegetarian");
+    return (
+      meal.protein_type === "vegetarian" ||
+      meal.protein_type === "vegetarisk" ||
+      meal.tags.includes("vegetarian") ||
+      meal.tags.includes("vegetariskt")
+    );
   });
 
   function assignMeal(day: string, mealId: string | null) {
@@ -1769,9 +1785,9 @@ function MealPlanning({
         </div>
       </div>
       <div className="filter-tabs">
-        {(["favourites", "asian", "vego"] as const).map((option) => (
+        {(["favourites", "recept", "asian", "vego"] as const).map((option) => (
           <button key={option} className={filter === option ? "filter-tab active" : "filter-tab"} onClick={() => setFilter(option)}>
-            {option === "favourites" ? "Favourites" : option === "asian" ? "Asian" : "Vego"}
+            {option === "favourites" ? "Favourites" : option === "recept" ? "Recept" : option === "asian" ? "Asian" : "Vego"}
           </button>
         ))}
       </div>

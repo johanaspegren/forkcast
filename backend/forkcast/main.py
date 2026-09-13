@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -5,11 +6,20 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from backend.forkcast.api.recipes import router as recipes_router
 from backend.forkcast.api.sessions import router
 from backend.forkcast.api.websocket import manager
 from backend.forkcast.game.engine import engine
+from backend.forkcast.recipes.meal_sync import sync_recipe_meals
 
-app = FastAPI(title="Forkcast", version="0.1.0")
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    # Stored recipes join the meal pool before the first request is served.
+    sync_recipe_meals()
+    yield
+
+
+app = FastAPI(title="Forkcast", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -20,6 +30,7 @@ app.add_middleware(
 )
 
 app.include_router(router)
+app.include_router(recipes_router)
 
 DIST_DIR = Path(__file__).resolve().parents[2] / "dist"
 

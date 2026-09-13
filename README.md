@@ -13,6 +13,7 @@ This first prototype includes:
 - Development simulation mode with three random extra players
 - Turn-based negotiation with direct cook/clean commitments
 - Live hallway menu display with rotating restaurant-inspired styles
+- Shared family recipe collection, added from a photo or a link, feeding the meal pool
 
 ## Run Locally
 
@@ -190,6 +191,51 @@ Implemented prototype commitments:
 - **I'll Clean** toggles the player for cleanup.
 
 For this prototype pass, every player has **I'll Cook** and **I'll Clean** available directly on meal proposals. These commitments do not grant Voting Points; they are already strategically useful because they help lock preferred meals. Wild Card, Roulette, and Swap are held back while the core negotiation loop is refined. A proposal can only be locked when it is leading its day and has both chef and cleanup volunteers.
+
+## Recipe Collection
+
+Open the family recipe collection at:
+
+```text
+http://localhost:5173/recipes
+```
+
+Anyone on the LAN can add to it two ways:
+
+- **Drop a photo** of a recipe card (or tap **Fotografera** on a phone). The backend sends the
+  photo to Claude, which transcribes it into the Forkcast recipe schema and returns a bounding
+  box for the plated dish; that box is used to cut a square thumbnail showing just the serving.
+- **Paste a link**. Most Swedish recipe sites (ICA, Coop, Arla, …) publish schema.org
+  `Recipe` JSON-LD, which is parsed directly — no API key and no AI needed. If a page has no
+  structured data, the page text falls back to Claude.
+
+Every recipe is stored as its own JSON blob in `.forkcast-data/recipes/<id>.json`, using the
+same schema as `forkcast_recipes.json`. Source images are kept alongside in `images/`, and
+thumbnails in `thumbs/`. **Exportera** downloads the whole collection as a single
+`forkcast_recipes.json`; dropping such a file back onto the page imports it.
+
+Recipes join the game's meal pool automatically and appear under the **Recept** tab during
+meal selection. The protein, fish and minced-meat flags on each recipe drive the existing
+house rules, so a recipe-backed dinner counts the same as a built-in one.
+
+### Photo import setup
+
+Photo import needs an Anthropic API key on the server:
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
+npm run serve
+```
+
+Without a key the page says so and link import keeps working. To use a different model:
+
+```bash
+export FORKCAST_RECIPE_MODEL=claude-sonnet-5
+```
+
+Transcriptions from photos are marked **Granska** (review) until someone in the family opens
+the recipe and confirms it — a recipe card photographed at an angle is not always read
+perfectly, and the ingredient amounts are editable.
 
 ## School Menu Context
 
