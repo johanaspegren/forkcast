@@ -1135,6 +1135,83 @@ function QrShare({ value }: { value: string }) {
   );
 }
 
+function DisplaySwipeQr({ value, themeClassName }: { value: string; themeClassName: string }) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const isNekoTheme = themeClassName === "theme-neko";
+
+  const themedCopy = (() => {
+    if (themeClassName === "theme-neko") {
+      return {
+        kicker: "にゃんこ投票",
+        title: "みんなで投票しよう！",
+        hint: "← だめ ・ → いいね ・ ↑ つくるよ",
+        cta: "投票する"
+      };
+    }
+    if (themeClassName === "theme-artdeco") {
+      return {
+        kicker: "Golden Ballot",
+        title: "Tonight\'s Vote",
+        hint: "Choose the week in one elegant scan.",
+        cta: "Vote"
+      };
+    }
+    if (themeClassName === "theme-pizzeria") {
+      return {
+        kicker: "Annuncio",
+        title: "VOTA!",
+        hint: "Sinistra no · destra si · su: cucino io",
+        cta: "Apri"
+      };
+    }
+    return {
+      kicker: "Veckans svep",
+      title: "Skanna och rosta pa veckan",
+      hint: "Vanster: nej · Hoger: gillar · Upp: favorit + jag lagar",
+      cta: "Svep"
+    };
+  })();
+
+  useEffect(() => {
+    if (!canvasRef.current) return;
+    const qrColors =
+      themeClassName === "theme-artdeco"
+        ? { dark: "#d4ab4a", light: "#171410" }
+        : { dark: "#24302f", light: "#fff9ed" };
+
+    QRCode.toCanvas(canvasRef.current, value, {
+      width: 108,
+      margin: 1,
+      color: qrColors
+    }).catch(() => undefined);
+  }, [themeClassName, value]);
+
+  return (
+    <a className="display-swipe-qr" href={value}>
+      <div className="display-swipe-qr-copy">
+        {isNekoTheme ? (
+          <div className="display-swipe-qr-neko-compact">
+            <span aria-hidden="true" className="display-swipe-qr-neko-icon">🐱</span>
+            <span aria-hidden="true" className="display-swipe-qr-neko-symbol">投</span>
+            <div className="display-swipe-qr-neko-text">
+              <strong>{themedCopy.title}</strong>
+              <span>{themedCopy.hint}</span>
+            </div>
+          </div>
+        ) : (
+          <>
+            <p className="display-kicker">{themedCopy.kicker}</p>
+            <strong>{themedCopy.title}</strong>
+            <span>{themedCopy.hint}</span>
+            <em className="display-swipe-qr-cta">{themedCopy.cta}</em>
+          </>
+        )}
+      </div>
+      <canvas aria-label="QR-kod till veckans svep" ref={canvasRef} />
+    </a>
+  );
+}
+
 function DisplayScreen({
   session,
   meals,
@@ -1203,6 +1280,7 @@ function DisplayScreen({
   const displayWeekLabel = `Week ${displayWeek.week} · ${displayWeek.year}`;
   const displayWeekRange = formatShortDateRange(displayWeek.start, displayWeek.end);
   const displayWeekKey = weekId(displayWeek.year, displayWeek.week);
+  const swipeUrl = `${window.location.origin}/swipe?from=qr&year=${displayWeek.year}&week=${displayWeek.week}`;
   const dayLabel = (day: string) => theme.dayNames?.[day] ?? titleCase(day);
   const manualSession = isManualDisplaySession(session);
 
@@ -1277,6 +1355,7 @@ function DisplayScreen({
             </button>
           </div>
           <SwipeProgress year={displayWeek.year} week={displayWeek.week} weekId={displayWeekKey} />
+          <DisplaySwipeQr value={swipeUrl} themeClassName={theme.className} />
           <div className="display-load">
             <input value={joinCode} onChange={(event) => onJoinCodeChange(event.target.value)} placeholder="Session ID" />
             <button className="primary" onClick={onLoad}>Load Menu</button>
@@ -1442,6 +1521,8 @@ function DisplayScreen({
           <span>{theme.tagline}</span>
           <span>{phaseLabel}</span>
         </div>
+
+        <DisplaySwipeQr value={swipeUrl} themeClassName={theme.className} />
 
         {editable && manualSession && (
           <section className="display-manual-editor" aria-label={`Manual menu editor for ${displayWeekLabel}`}>
