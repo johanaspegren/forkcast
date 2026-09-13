@@ -4338,7 +4338,7 @@ h3 {
   display: flex;
   flex-direction: column;
   flex: 1;
-  transform: translateY(10%);
+  transform: translateY(5%);
 }
 
 .swipe-topline {
@@ -4456,6 +4456,9 @@ h3 {
   align-items: center;
   gap: 18px;
   padding: 8px 0 4px;
+  margin-top: clamp(44px, 7vh, 84px);
+  position: relative;
+  z-index: 2;
 }
 
 .swipe-actions button {
@@ -4477,7 +4480,9 @@ h3 {
   text-align: center;
   color: rgba(255, 255, 255, 0.85);
   font-size: 0.8rem;
-  margin: 8px 0 6px;
+  margin: 10px 0 8px;
+  position: relative;
+  z-index: 2;
 }
 
 .swipe-roster {
